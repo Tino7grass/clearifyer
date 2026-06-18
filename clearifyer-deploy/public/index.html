@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clearifyer — Know before you send</title>
+<meta name="description" content="Prüfe Blockchain-Adressen auf Betrugsrisiken bevor du Krypto sendest. Kostenlos, DACH, Deutsch.">
+<meta property="og:title" content="Clearifyer — Know before you send">
+<meta property="og:description" content="Blockchain-Adress-Prüfung gegen Krypto-Betrug. Echtzeit-Analyse auf Deutsch.">
+<style>
+  :root {
+    --bg:      #0a0f1e;
+    --surface: #161f3a;
+    --border:  #253352;
+    --text:    #f0f4ff;
+    --muted:   #6b7fa8;
+    --subtle:  #3a4f7a;
+    --green:   #10b981;
+    --red:     #ef4444;
+    --amber:   #f59e0b;
+    --blue:    #3b82f6;
+    --mono: 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0 1rem 4rem; }
+
+  /* Header */
+  header { text-align: center; padding: 3rem 1rem 2rem; }
+  .logo  { font-size: 2.5rem; margin-bottom: 0.5rem; display: block; }
+  .wordmark { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
+  .wordmark span { color: var(--green); }
+  .claim { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); margin-top: 0.4rem; }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; max-width: 680px; margin: 0 auto 1.25rem; }
+  .card-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 700; margin-bottom: 0.75rem; }
+
+  /* Address input */
+  .addr-wrap { position: relative; margin-bottom: 1.25rem; }
+  textarea.addr {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 12px; color: var(--text); font-family: var(--mono); font-size: 0.78rem;
+    padding: 0.85rem 1rem; outline: none; resize: none; min-height: 76px;
+    transition: border-color 0.2s; line-height: 1.6;
+  }
+  textarea.addr:focus { border-color: var(--green); }
+  textarea.addr::placeholder { color: var(--subtle); }
+  .addr-valid   { border-color: var(--green) !important; }
+  .addr-invalid { border-color: var(--red) !important; }
+
+  /* Network */
+  .net-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1.25rem; }
+  @media(min-width: 400px) { .net-grid { grid-template-columns: repeat(6, 1fr); } }
+  .net-btn {
+    padding: 0.6rem 0.25rem; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted); font-size: 0.72rem; font-weight: 700;
+    cursor: pointer; text-align: center; transition: all 0.15s;
+  }
+  .net-btn:hover { border-color: var(--subtle); color: var(--text); }
+  .net-btn.active { border-color: var(--green); background: rgba(16,185,129,0.1); color: var(--green); }
+  .net-icon { font-size: 1.1rem; display: block; margin-bottom: 0.2rem; }
+
+  /* Context */
+  .ctx-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; }
+  .ctx-q { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.75rem; }
+  .ctx-opt {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.75rem;
+    border-radius: 9px; border: 1px solid var(--border); margin-bottom: 0.4rem;
+    cursor: pointer; font-size: 0.8rem; color: var(--muted); transition: all 0.15s;
+  }
+  .ctx-opt:hover { border-color: var(--subtle); }
+  .ctx-opt.active { border-color: var(--green); background: rgba(16,185,129,0.07); color: var(--text); }
+  .ctx-radio { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; transition: all 0.15s; }
+  .ctx-opt.active .ctx-radio { border-color: var(--green); background: var(--green); }
+
+  /* Amount */
+  input.amount {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 9px; color: var(--text); font-size: 0.85rem;
+    padding: 0.7rem 1rem; outline: none; margin-bottom: 1.25rem; transition: border-color 0.2s;
+  }
+  input.amount:focus { border-color: var(--green); }
+  input.amount::placeholder { color: var(--subtle); }
+
+  /* Submit */
+  button.submit {
+    width: 100%; background: var(--green); color: #000; border: none;
+    border-radius: 12px; font-size: 0.95rem; font-weight: 800; padding: 0.9rem;
+    cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.01em;
+  }
+  button.submit:hover:not(:disabled) { opacity: 0.88; }
+  button.submit:disabled { opacity: 0.35; cursor: not-allowed; }
+  .hint { font-size: 0.72rem; color: var(--muted); text-align: center; margin-top: 0.6rem; }
+
+  /* Result */
+  #result { display: none; }
+  .loading { text-align: center; padding: 1.5rem 0; color: var(--muted); font-size: 0.88rem; }
+  .spinner {
+    display: inline-block; width: 18px; height: 18px; vertical-align: middle;
+    border: 2px solid var(--border); border-top-color: var(--green);
+    border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 0.4rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Verdict */
+  .verdict {
+    display: flex; align-items: flex-start; gap: 0.85rem;
+    padding: 1rem 1.1rem; border-radius: 10px; margin-bottom: 1rem;
+    font-weight: 600; font-size: 0.95rem; line-height: 1.4;
+  }
+  .verdict.danger { background: rgba(239,68,68,.09); border: 1px solid rgba(239,68,68,.35); color: var(--red); }
+  .verdict.warn   { background: rgba(245,158,11,.09); border: 1px solid rgba(245,158,11,.35); color: var(--amber); }
+  .verdict.ok     { background: rgba(16,185,129,.09); border: 1px solid rgba(16,185,129,.35); color: var(--green); }
+  .verdict-icon   { font-size: 1.3rem; flex-shrink: 0; }
+
+  /* Score */
+  .score-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; font-size: 0.8rem; color: var(--muted); }
+  .score-val { font-size: 1.1rem; font-weight: 800; }
+  .score-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-bottom: 1.1rem; }
+  .score-fill  { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+  /* Data grid */
+  .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
+  .data-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; }
+  .dc-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .dc-value { font-size: 0.9rem; font-weight: 700; margin-top: 0.15rem; font-family: var(--mono); }
+
+  /* Findings */
+  .findings { list-style: none; margin-bottom: 1rem; }
+  .findings li { display: flex; gap: 0.6rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.83rem; line-height: 1.5; align-items: flex-start; }
+  .findings li:last-child { border-bottom: none; }
+  .ftag { font-size: 0.62rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 0.1rem; }
+  .ftag.rot    { background: rgba(239,68,68,.18); color: var(--red); }
+  .ftag.gelb   { background: rgba(245,158,11,.18); color: var(--amber); }
+  .ftag.gruen  { background: rgba(16,185,129,.18); color: var(--green); }
+  .ftag.blau   { background: rgba(59,130,246,.18); color: var(--blue); }
+
+  /* Recommendation */
+  .reco { background: rgba(16,185,129,.05); border: 1px solid rgba(16,185,129,.2); border-radius: 10px; padding: 0.9rem 1rem; font-size: 0.83rem; line-height: 1.65; margin-bottom: 1rem; color: var(--muted); }
+  .reco strong { color: var(--text); }
+
+  /* Actions */
+  .actions { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+  .action-primary { padding: 0.8rem; border-radius: 10px; background: var(--red); color: #fff; font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; }
+  .action-secondary { padding: 0.8rem; border-radius: 10px; background: var(--surface); color: var(--text); font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); cursor: pointer; }
+  .action-tertiary { padding: 0.8rem; border-radius: 10px; background: transparent; color: var(--muted); font-size: 0.85rem; border: 1px solid var(--border); cursor: pointer; }
+
+  /* Explorer links */
+  .explorer-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .explorer-link { font-size: 0.75rem; color: var(--green); text-decoration: none; background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); border-radius: 5px; padding: 0.3rem 0.7rem; }
+  .explorer-link:hover { background: rgba(16,185,129,.15); }
+
+  /* Disclaimer */
+  .disclaimer { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2); border-radius: 8px; padding: 0.85rem 1rem; font-size: 0.75rem; line-height: 1.6; color: var(--muted); margin-top: 0.75rem; }
+  .disclaimer strong { color: var(--amber); }
+
+  /* Powered by */
+  .powered { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; margin-top: 1.5rem; }
+  .pw-badge { font-size: 0.62rem; padding: 0.2rem 0.55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+
+  /* Tips card */
+  .tip-list { list-style: none; }
+  .tip-list li { display: flex; gap: 0.6rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; line-height: 1.55; align-items: flex-start; }
+  .tip-list li:last-child { border-bottom: none; }
+  .tip-tag { font-size: 0.62rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 0.1rem; }
+  .tip-tag.r { background: rgba(239,68,68,.18); color: var(--red); }
+  .tip-tag.y { background: rgba(245,158,11,.18); color: var(--amber); }
+  .tip-tag.b { background: rgba(59,130,246,.18); color: var(--blue); }
+
+  /* Footer */
+  footer { text-align: center; padding: 2rem 1rem 0; font-size: 0.72rem; color: var(--subtle); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🛡️</span>
+  <div class="wordmark">Clear<span>ifyer</span></div>
+  <div class="claim">Know before you send</div>
+</header>
+
+<!-- Eingabe -->
+<div class="card">
+  <div class="card-label">Empfänger-Adresse prüfen</div>
+
+  <div class="addr-wrap">
+    <textarea class="addr" id="addr"
+      placeholder="0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
+      oninput="onAddrInput(this)" rows="3" autocomplete="off" spellcheck="false"></textarea>
+  </div>
+
+  <div class="card-label">Blockchain</div>
+  <div class="net-grid">
+    <button class="net-btn active" data-net="eth" onclick="selectNet(this)"><span class="net-icon">⟠</span>ETH</button>
+    <button class="net-btn" data-net="btc" onclick="selectNet(this)"><span class="net-icon">₿</span>BTC</button>
+    <button class="net-btn" data-net="sol" onclick="selectNet(this)"><span class="net-icon">◎</span>SOL</button>
+    <button class="net-btn" data-net="bnb" onclick="selectNet(this)"><span class="net-icon">⬡</span>BNB</button>
+    <button class="net-btn" data-net="matic" onclick="selectNet(this)"><span class="net-icon">⬟</span>MATIC</button>
+    <button class="net-btn" data-net="trx" onclick="selectNet(this)"><span class="net-icon">⬢</span>TRX</button>
+  </div>
+
+  <div class="ctx-card">
+    <div class="ctx-q">Wie hast du diese Adresse erhalten?</div>
+    <div class="ctx-opt" onclick="selectCtx(this, 'support')">
+      <div class="ctx-radio"></div><span>💬</span>
+      <span>Support schickte sie mir (Telegram, WhatsApp, E-Mail)</span>
+    </div>
+    <div class="ctx-opt" onclick="selectCtx(this, 'website')">
+      <div class="ctx-radio"></div><span>🌐</span>
+      <span>Offizielle Website oder App</span>
+    </div>
+    <div class="ctx-opt" onclick="selectCtx(this, 'friend')">
+      <div class="ctx-radio"></div><span>👤</span>
+      <span>Freund oder Bekannter</span>
+    </div>
+    <div class="ctx-opt" onclick="selectCtx(this, 'email')">
+      <div class="ctx-radio"></div><span>📧</span>
+      <span>E-Mail oder unbekannte Quelle</span>
+    </div>
+  </div>
+
+  <div class="card-label">Betrag (optional)</div>
+  <input class="amount" id="amount" type="text" placeholder="z.B. 200 EUR oder 0.5 ETH">
+
+  <button class="submit" id="btnSubmit" onclick="runCheck()" disabled>
+    🔍  Adresse prüfen
+  </button>
+  <div class="hint" id="hint">Adresse eingeben und Quelle auswählen</div>
+</div>
+
+<!-- Ergebnis -->
+<div class="card" id="result">
+  <div id="result-inner"></div>
+</div>
+
+<!-- Tipps -->
+<div class="card">
+  <div class="card-label">Die wichtigsten Warnsignale</div>
+  <ul class="tip-list">
+    <li><span class="tip-tag r">GEFAHR</span><span>Kein legitimer Kundendienst schickt dir je eine externe Wallet-Adresse — niemals.</span></li>
+    <li><span class="tip-tag r">GEFAHR</span><span>„Gewinne entsperren" durch Vorauszahlung: klassisches Pig-Butchering-Schema.</span></li>
+    <li><span class="tip-tag y">WARNUNG</span><span>Neue Wallet ohne Transaktionshistorie, die plötzlich große Beträge empfangen soll.</span></li>
+    <li><span class="tip-tag y">WARNUNG</span><span>Zeitdruck und Dringlichkeit sind Manipulationstaktiken — seriöse Anbieter drängen nie.</span></li>
+    <li><span class="tip-tag b">TIPP</span><span>Bei Unsicherheit: 24 Stunden warten und eine zweite vertrauenswürdige Person fragen.</span></li>
+  </ul>
+</div>
+
+<div class="powered">
+  <span class="pw-badge">Etherscan</span>
+  <span class="pw-badge">Chainabuse</span>
+  <span class="pw-badge">Claude AI</span>
+  <span class="pw-badge">GDPR-konform</span>
+</div>
+
+<footer>
+  clearifyer.io · &copy; 2026 Alefy GmbH (i.Gr.) · Freiburg im Breisgau<br>
+  Dieses Tool ersetzt keine rechtliche oder finanzielle Beratung.
+</footer>
+
+<script>
+let selectedNetwork = 'eth';
+let selectedContext = '';
+
+// Format validation patterns
+const patterns = {
+  eth:   /^0x[0-9a-fA-F]{40}$/,
+  bnb:   /^0x[0-9a-fA-F]{40}$/,
+  matic: /^0x[0-9a-fA-F]{40}$/,
+  btc:   /^(1|3)[1-9A-HJ-NP-Za-km-z]{25,34}$|^bc1[0-9a-z]{6,87}$/,
+  sol:   /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+  trx:   /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
+};
+
+function onAddrInput(el) {
+  const addr = el.value.trim();
+  const valid = patterns[selectedNetwork]?.test(addr);
+  el.className = 'addr' + (addr.length > 5 ? (valid ? ' addr-valid' : ' addr-invalid') : '');
+  updateSubmitState();
+}
+
+function selectNet(btn) {
+  document.querySelectorAll('.net-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedNetwork = btn.dataset.net;
+  onAddrInput(document.getElementById('addr'));
+}
+
+function selectCtx(el, val) {
+  document.querySelectorAll('.ctx-opt').forEach(o => o.classList.remove('active'));
+  el.classList.add('active');
+  selectedContext = val;
+  updateSubmitState();
+}
+
+function updateSubmitState() {
+  const addr = document.getElementById('addr').value.trim();
+  const ready = addr.length > 10 && selectedContext !== '';
+  document.getElementById('btnSubmit').disabled = !ready;
+  document.getElementById('hint').textContent = !addr
+    ? 'Adresse eingeben und Quelle auswählen'
+    : !selectedContext ? 'Bitte Quelle der Adresse auswählen' : '';
+}
+
+async function runCheck() {
+  const addr    = document.getElementById('addr').value.trim();
+  const amount  = document.getElementById('amount').value.trim();
+  const btn     = document.getElementById('btnSubmit');
+  const resultDiv = document.getElementById('result');
+  const inner   = document.getElementById('result-inner');
+
+  btn.disabled = true;
+  resultDiv.style.display = 'block';
+  inner.innerHTML = '<div class="loading"><span class="spinner"></span>Analysiere — Blockchain-Daten werden abgerufen…</div>';
+  resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    const res = await fetch('/.netlify/functions/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        addr, network: selectedNetwork,
+        context: selectedContext, amount
+      })
+    });
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderResult(data);
+
+  } catch (e) {
+    inner.innerHTML = `
+      <div class="verdict warn">
+        <span class="verdict-icon">⚠️</span>
+        <div>Fehler bei der Analyse.<br>
+        <small style="font-weight:400;opacity:.7">${e.message}</small></div>
+      </div>`;
+  }
+
+  btn.disabled = false;
+}
+
+function renderResult(r) {
+  const inner = document.getElementById('result-inner');
+  const score = r.riskScore ?? 0;
+  const isHigh = score >= 70;
+  const isMid  = score >= 40;
+  const color  = isHigh ? 'var(--red)' : isMid ? 'var(--amber)' : 'var(--green)';
+  const vClass = isHigh ? 'danger' : isMid ? 'warn' : 'ok';
+  const icon   = isHigh ? '🚨' : isMid ? '⚠️' : '✅';
+
+  const findingsHtml = (r.findings || []).map(f =>
+    `<li><span class="ftag ${f.level}">${f.label}</span><span>${f.text}</span></li>`
+  ).join('');
+
+  let onChainHtml = '';
+  if (r.onChain && !r.onChain.error && !r.onChain.skipped) {
+    const oc = r.onChain;
+    onChainHtml = `
+      <div class="card-label" style="margin-top:0.5rem">On-Chain Daten (Etherscan)</div>
+      <div class="data-grid">
+        ${oc.balanceEth  != null ? `<div class="data-cell"><div class="dc-label">Kontostand</div><div class="dc-value">${oc.balanceEth} ETH</div></div>` : ''}
+        ${oc.txCount     != null ? `<div class="data-cell"><div class="dc-label">Transaktionen</div><div class="dc-value">${oc.txCount}</div></div>` : ''}
+        ${oc.firstTxDate        ? `<div class="data-cell"><div class="dc-label">Erste TX</div><div class="dc-value">${oc.firstTxDate}</div></div>` : ''}
+        ${oc.receivesOnly != null ? `<div class="data-cell"><div class="dc-label">Nur Empfang</div><div class="dc-value" style="color:${oc.receivesOnly?'var(--amber)':'var(--green)'}">${oc.receivesOnly?'Ja ⚠️':'Nein ✓'}</div></div>` : ''}
+      </div>`;
+  }
+
+  let chainabuseHtml = '';
+  if (r.chainabuse) {
+    const ca = r.chainabuse;
+    chainabuseHtml = `
+      <div class="card-label" style="margin-top:0.5rem">Chainabuse Datenbank</div>
+      <div class="data-grid">
+        <div class="data-cell">
+          <div class="dc-label">Scam-Meldungen</div>
+          <div class="dc-value" style="color:${ca.reports>0?'var(--red)':'var(--green)'}">
+            ${ca.reports} ${ca.reports>0?'⚠️':'✓'}
+          </div>
+        </div>
+        ${ca.categories?.length ? `<div class="data-cell"><div class="dc-label">Kategorie</div><div class="dc-value" style="font-size:0.75rem">${ca.categories[0]}</div></div>` : ''}
+      </div>`;
+  }
+
+  const explorerLinks = buildExplorerLinks(r.addr, r.network);
+
+  inner.innerHTML = `
+    <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">
+      ${r.addr}
+    </div>
+
+    <div class="score-row">
+      <span>Risiko-Score</span>
+      <span class="score-val" style="color:${color}">${score}/100 · ${r.riskLevel}</span>
+    </div>
+    <div class="score-track">
+      <div class="score-fill" style="width:${score}%;background:${color}"></div>
+    </div>
+
+    <div class="verdict ${vClass}">
+      <span class="verdict-icon">${icon}</span>
+      <span>${r.summary}</span>
+    </div>
+
+    ${onChainHtml}
+    ${chainabuseHtml}
+
+    <div class="card-label" style="margin-top:0.5rem">Befunde</div>
+    <ul class="findings">${findingsHtml}</ul>
+
+    <div class="reco"><strong>Empfehlung:</strong> ${r.recommendation}</div>
+
+    ${isHigh ? `<div class="actions">
+      <button class="action-primary" onclick="window.location.reload()">⛔ Transaktion abbrechen — neu prüfen</button>
+    </div>` : ''}
+
+    <div class="actions">
+      <button class="action-secondary" onclick="shareReport(${JSON.stringify({addr:r.addr,score,level:r.riskLevel,reco:r.recommendation}).replace(/'/g,'&#39;')})">📄 Report teilen</button>
+      <button class="action-tertiary" onclick="newCheck()">🔍 Neue Adresse prüfen</button>
+    </div>
+
+    <div class="card-label" style="margin-top:0.5rem">Selbst nachprüfen</div>
+    <div class="explorer-links">${explorerLinks}</div>
+
+    <div class="disclaimer">
+      ⚠️ <strong>Kein Freifahrtschein.</strong> Diese Prüfung ist eine Entscheidungshilfe.
+      Blockchain-Transaktionen sind unwiderruflich. Bei großen Beträgen zusätzlich
+      manuell auf <strong>chainabuse.com</strong> prüfen und 24 Stunden warten.
+    </div>`;
+}
+
+function buildExplorerLinks(addr, network) {
+  const maps = {
+    eth:   `https://etherscan.io/address/${addr}`,
+    bnb:   `https://bscscan.com/address/${addr}`,
+    matic: `https://polygonscan.com/address/${addr}`,
+    trx:   `https://tronscan.org/#/address/${addr}`,
+    btc:   `https://mempool.space/address/${addr}`,
+    sol:   `https://solscan.io/account/${addr}`,
+  };
+  const links = [];
+  if (maps[network]) links.push({ label: 'Block Explorer', url: maps[network] });
+  links.push({ label: 'Chainabuse', url: `https://www.chainabuse.com/address/${addr}` });
+  links.push({ label: 'Bitquery', url: `https://explorer.bitquery.io/search?query=${addr}` });
+  return links.map(l => `<a class="explorer-link" href="${l.url}" target="_blank" rel="noopener">${l.label} ↗</a>`).join('');
+}
+
+function shareReport(data) {
+  const text = `Clearifyer Sicherheitsprüfung\n\nAdresse: ${data.addr}\nRisiko: ${data.score}/100 — ${data.level}\n\n${data.reco}\n\nclearifyer.io`;
+  if (navigator.share) {
+    navigator.share({ title: 'Clearifyer Report', text });
+  } else {
+    navigator.clipboard?.writeText(text).then(() => alert('Report in Zwischenablage kopiert'));
+  }
+}
+
+function newCheck() {
+  document.getElementById('result').style.display = 'none';
+  document.getElementById('addr').value = '';
+  document.getElementById('addr').className = 'addr';
+  document.querySelectorAll('.ctx-opt').forEach(o => o.classList.remove('active'));
+  selectedContext = '';
+  updateSubmitState();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
