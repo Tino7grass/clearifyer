@@ -478,33 +478,88 @@ function renderReport(data) {
   document.title = `Clearifyer Risikobericht · ${address.slice(0,10)}...`;
 }
 
-// ── Demo-Daten (werden in Produktion durch API-Response ersetzt) ──
-const DEMO_DATA = {
-  address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-  ens_name: "vitalik.eth",
-  chain: "Ethereum",
-  context_answer: "Von einer offiziellen Projektwebseite erhalten",
-  risk_score: 12,
-  recommendation: "Diese Adresse ist als Wallet von Vitalik Buterin, dem Mitgründer von Ethereum, bekannt. Es gibt keine Hinweise auf betrügerische Aktivitäten. Die Adresse steht auf keiner Sanktionsliste. Eine Transaktion kann als unbedenklich eingestuft werden.",
-  sources: {
-    ofac:         { detail: "Nicht auf der OFAC SDN-Liste (US Treasury) gefunden.", sanctioned: false, risk: "clear" },
-    eu_sanctions: { detail: "Nicht auf der EU-Sanktionsliste (Financial Sanctions File) gefunden.", sanctioned: false, risk: "clear" },
-    chainabuse:   { detail: "Keine Scam-Meldungen auf Chainabuse.", risk: "low" },
-    misttrack:    { detail: "Bekannte Entität: Ethereum-Gründer. Labels: public figure, eth-foundation.", risk: "low" },
-    etherscan:    { detail: "Wallet aktiv seit 2015. 2.847 Transaktionen. Guthaben: 1.234 ETH.", risk: "low" },
-    velocity:     { detail: "3 Transaktionen in den letzten 24h — unauffällig.", risk: "low" },
-    address_type: { detail: "Normale Wallet-Adresse (kein Smart Contract).", risk: "neutral" },
+// ── Daten aus URL-Parameter laden ──────────────────────────────
+function loadFromURL() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("data");
+    if (!raw) return null;
+    return JSON.parse(decodeURIComponent(raw));
+  } catch(e) {
+    console.error("URL-Daten konnten nicht geladen werden:", e);
+    return null;
   }
-};
+}
 
-// Beim Laden rendern
-renderReport(DEMO_DATA);
+// API-Response in Report-Format umwandeln
+function apiToReportData(r) {
+  const ctxMap = {
+    support: "Per Support-Nachricht (Telegram, WhatsApp, E-Mail) erhalten",
+    website: "Von einer offiziellen Website oder App erhalten",
+    friend:  "Von einem Freund oder Bekannten erhalten",
+    email:   "Per E-Mail oder unbekannter Quelle erhalten"
+  };
+  const chainMap = { eth: "Ethereum", btc: "Bitcoin", bnb: "BNB Chain", matic: "Polygon", trx: "TRON", sol: "Solana" };
+  const oc = r.onChain || {};
 
-// ── Produktion: So wird der Report von der Netlify-Function aufgerufen ──
-// Nach der API-Antwort:
-//   const reportWindow = window.open("/report.html");
-//   reportWindow.onload = () => reportWindow.renderReport(apiResponse);
-//   reportWindow.print(); // optional: direkt drucken
+  return {
+    address:        r.addr || r.address || "–",
+    ens_name:       r.ensName || null,
+    chain:          chainMap[r.network] || r.network || "Ethereum",
+    context_answer: ctxMap[r.context_answer] || r.context_answer || "–",
+    risk_score:     r.riskScore || 0,
+    recommendation: r.recommendation || "–",
+    sources: {
+      ofac: r.ofac ? {
+        detail: r.ofac.detail || "–",
+        sanctioned: r.ofac.sanctioned || false,
+        risk: r.ofac.risk || "clear"
+      } : null,
+      eu_sanctions: r.euSanctions ? {
+        detail: r.euSanctions.detail || "–",
+        sanctioned: r.euSanctions.sanctioned || false,
+        risk: r.euSanctions.risk || "clear"
+      } : null,
+      chainabuse: r.chainabuse ? {
+        detail: r.chainabuse.reports === 0
+          ? "Keine Scam-Meldungen auf Chainabuse."
+          : r.chainabuse.reports + " Scam-Meldung(en): " + (r.chainabuse.categories || []).join(", "),
+        risk: r.chainabuse.reports > 0 ? "high" : "low"
+      } : null,
+      misttrack: r.misttrack && r.misttrack.available ? {
+        detail: r.misttrack.detail || "–",
+        risk: r.misttrack.risk || "neutral"
+      } : null,
+      etherscan: oc.balanceEth != null ? {
+        detail: "Wallet aktiv seit " + (oc.firstTxDate || "unbekannt") + ". " +
+                (oc.txCount || 0) + " Transaktionen. Guthaben: " + (oc.balanceEth || "0") + " ETH.",
+        risk: "low"
+      } : null,
+      velocity: oc.velocity ? {
+        detail: oc.velocity.detail || "–",
+        risk: oc.velocity.risk || "low"
+      } : null,
+      address_type: oc.contract ? {
+        detail: oc.contract.detail || "–",
+        risk: oc.contract.risk || "neutral"
+      } : null
+    }
+  };
+}
+
+// Beim Laden: URL-Daten verwenden, sonst Fehlermeldung
+window.addEventListener("load", function() {
+  const urlData = loadFromURL();
+  if (urlData) {
+    renderReport(apiToReportData(urlData));
+  } else {
+    document.querySelector(".page").innerHTML =
+      '<div style="text-align:center;padding:3rem;color:#6B7280">' +
+      '<p style="font-size:1.2rem;font-weight:700;color:#0D1117;margin-bottom:0.5rem">Keine Berichtsdaten gefunden</p>' +
+      '<p>Bitte führe zuerst eine Adressprüfung auf <a href="/" style="color:#2563EB">clearifyer.netlify.app</a> durch.</p>' +
+      '</div>';
+  }
+});
 </script>
 </body>
 </html>
