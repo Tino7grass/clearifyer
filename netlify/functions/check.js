@@ -138,15 +138,18 @@ async function fetchEtherscan(addr, network) {
 
   try {
     const base = `https://api.etherscan.io/v2/api?chainid=${chainId}&apikey=${ETHERSCAN_KEY}`;
-    const [balRes, txRes, codeRes] = await Promise.all([
+    // Transaktionen: asc für erste TX, desc für Velocity
+    const [balRes, txAscRes, txDescRes, codeRes] = await Promise.all([
       fetch(`${base}&module=account&action=balance&address=${addr}&tag=latest`),
+      fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=1&sort=asc`),
       fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=100&sort=desc`),
       fetch(`${base}&module=proxy&action=eth_getCode&address=${addr}&tag=latest`)
     ]);
 
-    const balData  = await balRes.json();
-    const txData   = await txRes.json();
-    const codeData = await codeRes.json();
+    const balData   = await balRes.json();
+    const txAscData = await txAscRes.json();
+    const txDescData = await txDescRes.json();
+    const codeData  = await codeRes.json();
 
     // Balance
     const balanceEth = balData.status === "1"
@@ -156,29 +159,33 @@ async function fetchEtherscan(addr, network) {
     let txCount = 0, firstTxDate = null, lastTxDate = null, receivesOnly = false, velocity24h = 0;
     const now = Math.floor(Date.now() / 1000);
 
-    if (txData.status === "1" && Array.isArray(txData.result) && txData.result.length > 0) {
-      const txs = txData.result;
-      txCount = txs.length;
-      lastTxDate  = new Date(parseInt(txs[0].timeStamp) * 1000).toLocaleDateString("de-DE");
-      firstTxDate = new Date(parseInt(txs[txs.length - 1].timeStamp) * 1000).toLocaleDateString("de-DE");
+    // Erste TX (asc)
+    if (txAscData.status === "1" && Array.isArray(txAscData.result) && txAscData.result.length > 0) {
+      firstTxDate = new Date(parseInt(txAscData.result[0].timeStamp) * 1000).toLocaleDateString("de-DE");
+    }
+
+    // Neueste TXs (desc) für Velocity + letzte TX
+    if (txDescData.status === "1" && Array.isArray(txDescData.result) && txDescData.result.length > 0) {
+      const txs = txDescData.result;
+      txCount   = txs.length;
+      lastTxDate = new Date(parseInt(txs[0].timeStamp) * 1000).toLocaleDateString("de-DE");
       receivesOnly = txs.every(tx => tx.to?.toLowerCase() === addr.toLowerCase());
       velocity24h  = txs.filter(tx => parseInt(tx.timeStamp) > now - 86400).length;
     }
 
     // Velocity Risiko
     let velocityRisk = "low";
-    let velocityDetail = `${velocity24h} Transaktion(en) in den letzten 24h.`;
-    if (velocity24h > 20) { velocityRisk = "high";   velocityDetail = `🚨 ${velocity24h} Transaktionen in 24h — möglicher Mixer/Tumbler.`; }
+    let velocityDetail = `${velocity24h} Transaktion(en) in den letzten 24h — unauffällig.`;
+    if (velocity24h > 20)     { velocityRisk = "high";   velocityDetail = `🚨 ${velocity24h} Transaktionen in 24h — möglicher Mixer/Tumbler.`; }
     else if (velocity24h > 5) { velocityRisk = "medium"; velocityDetail = `⚠️ ${velocity24h} Transaktionen in 24h — erhöhte Aktivität.`; }
 
-    // Contract Detection
+    // Contract Detection — nur wenn Bytecode eindeutig vorhanden
     const bytecode = codeData.result;
-    const isContract = bytecode && bytecode !== "0x" && bytecode.length > 2;
+    const isContract = typeof bytecode === "string" && bytecode !== "0x" && bytecode !== "" && bytecode.length > 10;
     let contractRisk = "neutral";
     let contractDetail = "✅ Normale Wallet-Adresse (kein Smart Contract).";
 
     if (isContract) {
-      // Verifizierung prüfen
       try {
         const srcRes  = await fetch(`${base}&module=contract&action=getsourcecode&address=${addr}`);
         const srcData = await srcRes.json();
