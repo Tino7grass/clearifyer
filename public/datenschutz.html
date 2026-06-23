@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datenschutzerklärung – Clearifyer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #0A1628; --blue: #2563EB; --blue-light: #3B82F6;
+      --white: #FFFFFF; --gray-50: #F8FAFC; --gray-100: #F1F5F9;
+      --gray-300: #CBD5E1; --gray-500: #64748B; --gray-700: #334155;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--white); color: var(--navy); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10,22,40,0.97); backdrop-filter: blur(8px);
+      padding: 0 2rem; height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-logo { font-size: 1.2rem; font-weight: 700; color: var(--white); letter-spacing: -0.02em; text-decoration: none; }
+    .nav-logo span { color: var(--blue-light); }
+    .nav-back { font-size: 0.875rem; color: var(--gray-300); text-decoration: none; }
+    .nav-back:hover { color: var(--white); }
+    .content { max-width: 720px; margin: 0 auto; padding: 104px 2rem 80px; }
+    h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.025em; margin-bottom: 2rem; color: var(--navy); }
+    h2 { font-size: 1rem; font-weight: 600; color: var(--navy); margin: 2rem 0 0.5rem; }
+    p { font-size: 0.95rem; color: var(--gray-700); margin-bottom: 0.5rem; }
+    ul { font-size: 0.95rem; color: var(--gray-700); margin: 0.5rem 0 0.5rem 1.5rem; }
+    ul li { margin-bottom: 0.25rem; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    footer { background: var(--navy); padding: 2rem; text-align: center; margin-top: 4rem; }
+    footer p { font-size: 0.8rem; color: var(--gray-500); }
+    footer a { color: var(--gray-500); text-decoration: none; }
+    footer a:hover { color: var(--gray-300); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">Clear<span>ifyer</span></a>
+  <a href="/" class="nav-back">← Zurück</a>
+</nav>
+
+<div class="content">
+  <h1>Datenschutzerklärung</h1>
+
+  <h2>1. Verantwortlicher</h2>
+  <p>Tino Grass / Alefy GmbH (i.Gr.)<br>Imberyweg 13, 79111 Freiburg im Breisgau<br>E-Mail: <a href="mailto:tino@clearifyer.de">tino@clearifyer.de</a></p>
+
+  <h2>2. Erhebung und Verarbeitung von Daten</h2>
+  <p>Clearifyer ist ein Adressprüfungsdienst für Blockchain-Adressen. Bei der Nutzung des Tools werden folgende Daten verarbeitet:</p>
+  <ul>
+    <li><strong>Blockchain-Adressen:</strong> Die eingegebene Adresse wird zur Prüfung an externe Datenquellen (Etherscan, Chainabuse, OFAC-Listen) übermittelt. Es handelt sich um öffentliche Blockchain-Daten ohne Personenbezug.</li>
+    <li><strong>Kontextangaben:</strong> Die Antwort auf die Kontextfrage (Herkunft der Adresse) wird ausschließlich für die Risikobewertung verwendet und nicht gespeichert.</li>
+    <li><strong>Server-Logs:</strong> Beim Aufruf der Website werden technische Daten (IP-Adresse, Zeitstempel, Browser) im Rahmen des Netlify-Hostings temporär gespeichert.</li>
+  </ul>
+
+  <h2>3. Keine Nutzerkonten, keine Cookies</h2>
+  <p>Clearifyer erfordert keine Registrierung und setzt keine Tracking-Cookies ein. Es werden keine personenbezogenen Daten dauerhaft gespeichert.</p>
+
+  <h2>4. Externe Datenquellen</h2>
+  <p>Zur Adressprüfung werden folgende externe Dienste genutzt:</p>
+  <ul>
+    <li><strong>Etherscan</strong> (etherscan.io) — Blockchain-Daten Ethereum</li>
+    <li><strong>Chainabuse</strong> (chainabuse.com) — Betrugsreports</li>
+    <li><strong>OFAC SDN List</strong> — US-Sanktionsliste (US Treasury)</li>
+    <li><strong>EU-Finanzsanktionsliste</strong> — Europäische Sanktionsdaten</li>
+    <li><strong>Anthropic Claude API</strong> — KI-gestützte Risikobewertung</li>
+  </ul>
+  <p>Die übermittelten Daten beschränken sich auf die geprüfte Blockchain-Adresse. Es werden keine personenbezogenen Daten an diese Dienste weitergegeben.</p>
+
+  <h2>5. Hosting</h2>
+  <p>Diese Website wird über Netlify (Netlify, Inc., 512 2nd Street, Suite 200, San Francisco, CA 94107, USA) gehostet. Netlify verarbeitet technische Zugriffsdaten gemäß seiner eigenen Datenschutzrichtlinie (<a href="https://www.netlify.com/privacy/" target="_blank">netlify.com/privacy</a>).</p>
+
+  <h2>6. Ihre Rechte</h2>
+  <p>Sie haben das Recht auf Auskunft, Berichtigung, Löschung und Einschränkung der Verarbeitung Ihrer personenbezogenen Daten sowie das Recht auf Datenübertragbarkeit. Anfragen richten Sie bitte an: <a href="mailto:tino@clearifyer.de">tino@clearifyer.de</a></p>
+  <p>Sie haben außerdem das Recht, sich bei der zuständigen Datenschutzaufsichtsbehörde zu beschweren. In Baden-Württemberg ist dies der Landesbeauftragte für den Datenschutz und die Informationsfreiheit Baden-Württemberg (LfDI BW).</p>
+
+  <h2>7. Änderungen dieser Datenschutzerklärung</h2>
+  <p>Wir behalten uns vor, diese Datenschutzerklärung bei Bedarf anzupassen. Die aktuelle Version ist stets unter clearifyer.de/datenschutz.html abrufbar.</p>
+
+  <p style="margin-top: 2rem; font-size: 0.85rem; color: var(--gray-500);">Stand: Juni 2026</p>
+</div>
+
+<footer>
+  <p><a href="/">Startseite</a> &nbsp;·&nbsp; <a href="/impressum.html">Impressum</a> &nbsp;·&nbsp; <a href="/datenschutz.html">Datenschutz</a></p>
+</footer>
+
+</body>
+</html>
