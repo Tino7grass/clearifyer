@@ -25,18 +25,15 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0 1rem 4rem; }
 
-  /* Header */
   header { text-align: center; padding: 3rem 1rem 2rem; }
   .logo  { font-size: 2.5rem; margin-bottom: 0.5rem; display: block; }
   .wordmark { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
   .wordmark span { color: var(--green); }
   .claim { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); margin-top: 0.4rem; }
 
-  /* Card */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; max-width: 680px; margin: 0 auto 1.25rem; }
   .card-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 700; margin-bottom: 0.75rem; }
 
-  /* Address input */
   .addr-wrap { position: relative; margin-bottom: 1.25rem; }
   textarea.addr {
     width: 100%; background: var(--bg); border: 1.5px solid var(--border);
@@ -49,7 +46,6 @@
   .addr-valid   { border-color: var(--green) !important; }
   .addr-invalid { border-color: var(--red) !important; }
 
-  /* Network */
   .net-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1.25rem; }
   @media(min-width: 400px) { .net-grid { grid-template-columns: repeat(6, 1fr); } }
   .net-btn {
@@ -61,7 +57,6 @@
   .net-btn.active { border-color: var(--green); background: rgba(16,185,129,0.1); color: var(--green); }
   .net-icon { font-size: 1.1rem; display: block; margin-bottom: 0.2rem; }
 
-  /* Context */
   .ctx-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; }
   .ctx-q { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.75rem; }
   .ctx-opt {
@@ -74,7 +69,6 @@
   .ctx-radio { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; transition: all 0.15s; }
   .ctx-opt.active .ctx-radio { border-color: var(--green); background: var(--green); }
 
-  /* Amount */
   input.amount {
     width: 100%; background: var(--bg); border: 1px solid var(--border);
     border-radius: 9px; color: var(--text); font-size: 0.85rem;
@@ -83,7 +77,6 @@
   input.amount:focus { border-color: var(--green); }
   input.amount::placeholder { color: var(--subtle); }
 
-  /* Submit */
   button.submit {
     width: 100%; background: var(--green); color: #000; border: none;
     border-radius: 12px; font-size: 0.95rem; font-weight: 800; padding: 0.9rem;
@@ -93,7 +86,6 @@
   button.submit:disabled { opacity: 0.35; cursor: not-allowed; }
   .hint { font-size: 0.72rem; color: var(--muted); text-align: center; margin-top: 0.6rem; }
 
-  /* Result */
   #result { display: none; }
   .loading { text-align: center; padding: 1.5rem 0; color: var(--muted); font-size: 0.88rem; }
   .spinner {
@@ -103,7 +95,6 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Verdict */
   .verdict {
     display: flex; align-items: flex-start; gap: 0.85rem;
     padding: 1rem 1.1rem; border-radius: 10px; margin-bottom: 1rem;
@@ -114,19 +105,16 @@
   .verdict.ok     { background: rgba(16,185,129,.09); border: 1px solid rgba(16,185,129,.35); color: var(--green); }
   .verdict-icon   { font-size: 1.3rem; flex-shrink: 0; }
 
-  /* Score */
   .score-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; font-size: 0.8rem; color: var(--muted); }
   .score-val { font-size: 1.1rem; font-weight: 800; }
   .score-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-bottom: 1.1rem; }
   .score-fill  { height: 100%; border-radius: 3px; transition: width 1s ease; }
 
-  /* Data grid */
   .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
   .data-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; }
   .dc-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
   .dc-value { font-size: 0.9rem; font-weight: 700; margin-top: 0.15rem; font-family: var(--mono); }
 
-  /* Findings */
   .findings { list-style: none; margin-bottom: 1rem; }
   .findings li { display: flex; gap: 0.6rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.83rem; line-height: 1.5; align-items: flex-start; }
   .findings li:last-child { border-bottom: none; }
@@ -136,30 +124,26 @@
   .ftag.gruen  { background: rgba(16,185,129,.18); color: var(--green); }
   .ftag.blau   { background: rgba(59,130,246,.18); color: var(--blue); }
 
-  /* Recommendation */
   .reco { background: rgba(16,185,129,.05); border: 1px solid rgba(16,185,129,.2); border-radius: 10px; padding: 0.9rem 1rem; font-size: 0.83rem; line-height: 1.65; margin-bottom: 1rem; color: var(--muted); }
   .reco strong { color: var(--text); }
 
-  /* Actions */
   .actions { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
-  .action-primary { padding: 0.8rem; border-radius: 10px; background: var(--red); color: #fff; font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; }
-  .action-secondary { padding: 0.8rem; border-radius: 10px; background: var(--surface); color: var(--text); font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); cursor: pointer; }
-  .action-tertiary { padding: 0.8rem; border-radius: 10px; background: transparent; color: var(--muted); font-size: 0.85rem; border: 1px solid var(--border); cursor: pointer; }
+  .action-primary   { padding: 0.8rem; border-radius: 10px; background: var(--red);     color: #fff;          font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; }
+  .action-secondary { padding: 0.8rem; border-radius: 10px; background: var(--surface); color: var(--text);   font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); cursor: pointer; }
+  .action-tertiary  { padding: 0.8rem; border-radius: 10px; background: transparent;    color: var(--muted);  font-size: 0.85rem; border: 1px solid var(--border); cursor: pointer; }
+  .action-report    { padding: 0.8rem; border-radius: 10px; background: rgba(59,130,246,.12); color: var(--blue); font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(59,130,246,.3); cursor: pointer; }
+  .action-report:hover { background: rgba(59,130,246,.2); }
 
-  /* Explorer links */
   .explorer-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   .explorer-link { font-size: 0.75rem; color: var(--green); text-decoration: none; background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); border-radius: 5px; padding: 0.3rem 0.7rem; }
   .explorer-link:hover { background: rgba(16,185,129,.15); }
 
-  /* Disclaimer */
   .disclaimer { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2); border-radius: 8px; padding: 0.85rem 1rem; font-size: 0.75rem; line-height: 1.6; color: var(--muted); margin-top: 0.75rem; }
   .disclaimer strong { color: var(--amber); }
 
-  /* Powered by */
   .powered { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; margin-top: 1.5rem; }
   .pw-badge { font-size: 0.62rem; padding: 0.2rem 0.55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
 
-  /* Tips card */
   .tip-list { list-style: none; }
   .tip-list li { display: flex; gap: 0.6rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; line-height: 1.55; align-items: flex-start; }
   .tip-list li:last-child { border-bottom: none; }
@@ -168,7 +152,6 @@
   .tip-tag.y { background: rgba(245,158,11,.18); color: var(--amber); }
   .tip-tag.b { background: rgba(59,130,246,.18); color: var(--blue); }
 
-  /* Footer */
   footer { text-align: center; padding: 2rem 1rem 0; font-size: 0.72rem; color: var(--subtle); }
 </style>
 </head>
@@ -180,24 +163,22 @@
   <div class="claim">Know before you send</div>
 </header>
 
-<!-- Eingabe -->
 <div class="card">
   <div class="card-label">Empfänger-Adresse prüfen</div>
-
   <div class="addr-wrap">
     <textarea class="addr" id="addr"
-      placeholder="0x71C7656EC7ab88b098defB751B7401B5f6d8976F"
+      placeholder="0x71C7656EC7ab88b098defB751B7401B5f6d8976F oder vitalik.eth"
       oninput="onAddrInput(this)" rows="3" autocomplete="off" spellcheck="false"></textarea>
   </div>
 
   <div class="card-label">Blockchain</div>
   <div class="net-grid">
-    <button class="net-btn active" data-net="eth" onclick="selectNet(this)"><span class="net-icon">⟠</span>ETH</button>
-    <button class="net-btn" data-net="btc" onclick="selectNet(this)"><span class="net-icon">₿</span>BTC</button>
-    <button class="net-btn" data-net="sol" onclick="selectNet(this)"><span class="net-icon">◎</span>SOL</button>
-    <button class="net-btn" data-net="bnb" onclick="selectNet(this)"><span class="net-icon">⬡</span>BNB</button>
-    <button class="net-btn" data-net="matic" onclick="selectNet(this)"><span class="net-icon">⬟</span>MATIC</button>
-    <button class="net-btn" data-net="trx" onclick="selectNet(this)"><span class="net-icon">⬢</span>TRX</button>
+    <button class="net-btn active" data-net="eth"   onclick="selectNet(this)"><span class="net-icon">⟠</span>ETH</button>
+    <button class="net-btn"        data-net="btc"   onclick="selectNet(this)"><span class="net-icon">₿</span>BTC</button>
+    <button class="net-btn"        data-net="sol"   onclick="selectNet(this)"><span class="net-icon">◎</span>SOL</button>
+    <button class="net-btn"        data-net="bnb"   onclick="selectNet(this)"><span class="net-icon">⬡</span>BNB</button>
+    <button class="net-btn"        data-net="matic" onclick="selectNet(this)"><span class="net-icon">⬟</span>MATIC</button>
+    <button class="net-btn"        data-net="trx"   onclick="selectNet(this)"><span class="net-icon">⬢</span>TRX</button>
   </div>
 
   <div class="ctx-card">
@@ -229,12 +210,10 @@
   <div class="hint" id="hint">Adresse eingeben und Quelle auswählen</div>
 </div>
 
-<!-- Ergebnis -->
 <div class="card" id="result">
   <div id="result-inner"></div>
 </div>
 
-<!-- Tipps -->
 <div class="card">
   <div class="card-label">Die wichtigsten Warnsignale</div>
   <ul class="tip-list">
@@ -249,6 +228,9 @@
 <div class="powered">
   <span class="pw-badge">Etherscan</span>
   <span class="pw-badge">Chainabuse</span>
+  <span class="pw-badge">OFAC SDN</span>
+  <span class="pw-badge">EU-Sanktionen</span>
+  <span class="pw-badge">MistTrack</span>
   <span class="pw-badge">Claude AI</span>
   <span class="pw-badge">GDPR-konform</span>
 </div>
@@ -261,8 +243,8 @@
 <script>
 let selectedNetwork = 'eth';
 let selectedContext = '';
+let lastResult = null;
 
-// Format validation patterns
 const patterns = {
   eth:   /^0x[0-9a-fA-F]{40}$/,
   bnb:   /^0x[0-9a-fA-F]{40}$/,
@@ -274,7 +256,9 @@ const patterns = {
 
 function onAddrInput(el) {
   const addr = el.value.trim();
-  const valid = patterns[selectedNetwork]?.test(addr);
+  // ENS-Namen (.eth) immer als gültig behandeln
+  const isENS = addr.toLowerCase().endsWith('.eth');
+  const valid = isENS || patterns[selectedNetwork]?.test(addr);
   el.className = 'addr' + (addr.length > 5 ? (valid ? ' addr-valid' : ' addr-invalid') : '');
   updateSubmitState();
 }
@@ -295,7 +279,7 @@ function selectCtx(el, val) {
 
 function updateSubmitState() {
   const addr = document.getElementById('addr').value.trim();
-  const ready = addr.length > 10 && selectedContext !== '';
+  const ready = addr.length > 5 && selectedContext !== '';
   document.getElementById('btnSubmit').disabled = !ready;
   document.getElementById('hint').textContent = !addr
     ? 'Adresse eingeben und Quelle auswählen'
@@ -318,16 +302,12 @@ async function runCheck() {
     const res = await fetch('/.netlify/functions/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        addr, network: selectedNetwork,
-        context: selectedContext, amount
-      })
+      body: JSON.stringify({ addr, network: selectedNetwork, context: selectedContext, amount })
     });
-
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    lastResult = { ...data, context_answer: selectedContext, amount };
     renderResult(data);
-
   } catch (e) {
     inner.innerHTML = `
       <div class="verdict warn">
@@ -336,13 +316,19 @@ async function runCheck() {
         <small style="font-weight:400;opacity:.7">${e.message}</small></div>
       </div>`;
   }
-
   btn.disabled = false;
+}
+
+function openReport() {
+  if (!lastResult) return;
+  const encoded = encodeURIComponent(JSON.stringify(lastResult));
+  const win = window.open(\`/report.html?data=${encoded}\`, '_blank');
+  if (!win) alert('Bitte Pop-ups für clearifyer.netlify.app erlauben.');
 }
 
 function renderResult(r) {
   const inner = document.getElementById('result-inner');
-  const score = r.riskScore ?? 0;
+  const score  = r.riskScore ?? 0;
   const isHigh = score >= 70;
   const isMid  = score >= 40;
   const color  = isHigh ? 'var(--red)' : isMid ? 'var(--amber)' : 'var(--green)';
@@ -353,6 +339,28 @@ function renderResult(r) {
     `<li><span class="ftag ${f.level}">${f.label}</span><span>${f.text}</span></li>`
   ).join('');
 
+  // Sanktions-Banner
+  let sanctionHtml = '';
+  if (r.sanctioned) {
+    sanctionHtml = `
+      <div style="background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.5);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:var(--red);font-weight:600;">
+        ⛔ SANKTIONSTREFFER: ${r.sanctionSource || 'Sanktionsliste'}<br>
+        <span style="font-weight:400;font-size:0.8rem;color:rgba(239,68,68,.8)">Transaktionen mit dieser Adresse sind rechtlich verboten.</span>
+      </div>`;
+  }
+
+  // OFAC + EU
+  let sanctionDataHtml = '';
+  if (r.ofac || r.euSanctions) {
+    sanctionDataHtml = `
+      <div class="card-label" style="margin-top:0.5rem">Sanktionslisten</div>
+      <div class="data-grid">
+        ${r.ofac ? `<div class="data-cell"><div class="dc-label">OFAC SDN (USA)</div><div class="dc-value" style="font-size:0.75rem;color:${r.ofac.sanctioned?'var(--red)':'var(--green)'}">${r.ofac.sanctioned?'⛔ Treffer':'✅ Kein Treffer'}</div></div>` : ''}
+        ${r.euSanctions ? `<div class="data-cell"><div class="dc-label">EU-Sanktionen</div><div class="dc-value" style="font-size:0.75rem;color:${r.euSanctions.sanctioned?'var(--red)':'var(--green)'}">${r.euSanctions.sanctioned?'⛔ Treffer':'✅ Kein Treffer'}</div></div>` : ''}
+      </div>`;
+  }
+
+  // On-Chain
   let onChainHtml = '';
   if (r.onChain && !r.onChain.error && !r.onChain.skipped) {
     const oc = r.onChain;
@@ -363,9 +371,12 @@ function renderResult(r) {
         ${oc.txCount     != null ? `<div class="data-cell"><div class="dc-label">Transaktionen</div><div class="dc-value">${oc.txCount}</div></div>` : ''}
         ${oc.firstTxDate        ? `<div class="data-cell"><div class="dc-label">Erste TX</div><div class="dc-value">${oc.firstTxDate}</div></div>` : ''}
         ${oc.receivesOnly != null ? `<div class="data-cell"><div class="dc-label">Nur Empfang</div><div class="dc-value" style="color:${oc.receivesOnly?'var(--amber)':'var(--green)'}">${oc.receivesOnly?'Ja ⚠️':'Nein ✓'}</div></div>` : ''}
+        ${oc.velocity ? `<div class="data-cell"><div class="dc-label">Velocity 24h</div><div class="dc-value" style="font-size:0.75rem;color:${oc.velocity.risk==='high'?'var(--red)':oc.velocity.risk==='medium'?'var(--amber)':'var(--green)'}">${oc.velocity.velocity24h} TX</div></div>` : ''}
+        ${oc.contract ? `<div class="data-cell"><div class="dc-label">Adress-Typ</div><div class="dc-value" style="font-size:0.72rem;color:${oc.contract.risk==='high'?'var(--red)':'var(--green)'}">${oc.contract.isContract?'Contract':'Wallet ✓'}</div></div>` : ''}
       </div>`;
   }
 
+  // Chainabuse
   let chainabuseHtml = '';
   if (r.chainabuse) {
     const ca = r.chainabuse;
@@ -374,20 +385,36 @@ function renderResult(r) {
       <div class="data-grid">
         <div class="data-cell">
           <div class="dc-label">Scam-Meldungen</div>
-          <div class="dc-value" style="color:${ca.reports>0?'var(--red)':'var(--green)'}">
-            ${ca.reports} ${ca.reports>0?'⚠️':'✓'}
-          </div>
+          <div class="dc-value" style="color:${ca.reports>0?'var(--red)':'var(--green)'}">${ca.reports} ${ca.reports>0?'⚠️':'✓'}</div>
         </div>
         ${ca.categories?.length ? `<div class="data-cell"><div class="dc-label">Kategorie</div><div class="dc-value" style="font-size:0.75rem">${ca.categories[0]}</div></div>` : ''}
       </div>`;
   }
 
+  // MistTrack
+  let misttrackHtml = '';
+  if (r.misttrack?.available) {
+    const mt = r.misttrack;
+    misttrackHtml = `
+      <div class="card-label" style="margin-top:0.5rem">MistTrack AML</div>
+      <div class="data-grid">
+        <div class="data-cell">
+          <div class="dc-label">Risiko</div>
+          <div class="dc-value" style="font-size:0.75rem;color:${mt.risk==='high'?'var(--red)':mt.risk==='medium'?'var(--amber)':'var(--green)'}">${mt.riskScore ?? '–'}/100</div>
+        </div>
+        ${mt.labels?.length ? `<div class="data-cell"><div class="dc-label">Labels</div><div class="dc-value" style="font-size:0.7rem">${mt.labels.slice(0,2).join(', ')}</div></div>` : ''}
+      </div>`;
+  }
+
   const explorerLinks = buildExplorerLinks(r.addr, r.network);
+  const displayAddr = r.ensName ? `${r.ensName} (${r.addr})` : r.addr;
 
   inner.innerHTML = `
     <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">
-      ${r.addr}
+      ${displayAddr}
     </div>
+
+    ${sanctionHtml}
 
     <div class="score-row">
       <span>Risiko-Score</span>
@@ -402,20 +429,19 @@ function renderResult(r) {
       <span>${r.summary}</span>
     </div>
 
+    ${sanctionDataHtml}
     ${onChainHtml}
     ${chainabuseHtml}
+    ${misttrackHtml}
 
     <div class="card-label" style="margin-top:0.5rem">Befunde</div>
     <ul class="findings">${findingsHtml}</ul>
 
     <div class="reco"><strong>Empfehlung:</strong> ${r.recommendation}</div>
 
-    ${isHigh ? `<div class="actions">
-      <button class="action-primary" onclick="window.location.reload()">⛔ Transaktion abbrechen — neu prüfen</button>
-    </div>` : ''}
-
     <div class="actions">
-      <button class="action-secondary" onclick="shareReport(${JSON.stringify({addr:r.addr,score,level:r.riskLevel,reco:r.recommendation}).replace(/'/g,'&#39;')})">📄 Report teilen</button>
+      ${isHigh ? '<button class="action-primary" onclick="window.location.reload()">⛔ Transaktion abbrechen — neu prüfen</button>' : ''}
+      <button class="action-report" onclick="openReport()">📄 Compliance-Report herunterladen</button>
       <button class="action-tertiary" onclick="newCheck()">🔍 Neue Adresse prüfen</button>
     </div>
 
@@ -445,21 +471,13 @@ function buildExplorerLinks(addr, network) {
   return links.map(l => `<a class="explorer-link" href="${l.url}" target="_blank" rel="noopener">${l.label} ↗</a>`).join('');
 }
 
-function shareReport(data) {
-  const text = `Clearifyer Sicherheitsprüfung\n\nAdresse: ${data.addr}\nRisiko: ${data.score}/100 — ${data.level}\n\n${data.reco}\n\nclearifyer.io`;
-  if (navigator.share) {
-    navigator.share({ title: 'Clearifyer Report', text });
-  } else {
-    navigator.clipboard?.writeText(text).then(() => alert('Report in Zwischenablage kopiert'));
-  }
-}
-
 function newCheck() {
   document.getElementById('result').style.display = 'none';
   document.getElementById('addr').value = '';
   document.getElementById('addr').className = 'addr';
   document.querySelectorAll('.ctx-opt').forEach(o => o.classList.remove('active'));
   selectedContext = '';
+  lastResult = null;
   updateSubmitState();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
