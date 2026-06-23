@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clearifyer Risikobericht</title>
+<style>
+  /* ── RESET & BASE ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink:        #0D1117;
+    --ink-soft:   #6B7280;
+    --ink-xsoft:  #9CA3AF;
+    --surface:    #F8FAFC;
+    --border:     #E5E7EB;
+    --blue:       #2563EB;
+    --green:      #16A34A;
+    --yellow:     #D97706;
+    --red:        #DC2626;
+    --green-bg:   #F0FDF4;
+    --yellow-bg:  #FFFBEB;
+    --red-bg:     #FEF2F2;
+  }
+
+  body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 11pt;
+    color: var(--ink);
+    background: #fff;
+    line-height: 1.5;
+  }
+
+  /* ── SCREEN: Print button bar ── */
+  .screen-only {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 13px;
+  }
+  .screen-only span { opacity: 0.6; }
+  .btn-print {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.01em;
+  }
+  .btn-print:hover { background: #1d4ed8; }
+
+  /* ── PAGE ── */
+  .page {
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 20mm 18mm 18mm;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 20px;
+  }
+  .header-left h1 {
+    font-size: 22pt;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    line-height: 1;
+  }
+  .header-left p {
+    font-size: 9pt;
+    color: var(--ink-soft);
+    margin-top: 3px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .header-right {
+    text-align: right;
+    font-size: 8pt;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+  .header-right strong { color: var(--ink); font-size: 9pt; }
+
+  /* ── META TABLE ── */
+  .meta-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 9.5pt;
+  }
+  .meta-table td {
+    padding: 5px 8px;
+    vertical-align: top;
+  }
+  .meta-table tr:nth-child(odd) td { background: var(--surface); }
+  .meta-table .meta-key {
+    width: 38mm;
+    color: var(--ink-soft);
+    font-weight: 600;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .meta-table .meta-val {
+    color: var(--ink);
+    font-family: "Courier New", monospace;
+    font-size: 8.5pt;
+    word-break: break-all;
+  }
+  .meta-table .meta-val.normal {
+    font-family: inherit;
+    font-size: 9.5pt;
+  }
+
+  /* ── RISK BOX ── */
+  .risk-box {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    border-left: 5px solid;
+  }
+  .risk-box.low    { background: var(--green-bg);  border-color: var(--green);  }
+  .risk-box.medium { background: var(--yellow-bg); border-color: var(--yellow); }
+  .risk-box.high   { background: var(--red-bg);    border-color: var(--red);    }
+
+  .risk-score {
+    font-size: 36pt;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    min-width: 52px;
+  }
+  .risk-box.low    .risk-score { color: var(--green);  }
+  .risk-box.medium .risk-score { color: var(--yellow); }
+  .risk-box.high   .risk-score { color: var(--red);    }
+
+  .risk-label {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .risk-box.low    .risk-label { color: var(--green);  }
+  .risk-box.medium .risk-label { color: var(--yellow); }
+  .risk-box.high   .risk-label { color: var(--red);    }
+
+  .risk-desc {
+    font-size: 9pt;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+
+  /* ── SECTION HEADING ── */
+  .section-heading {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+
+  /* ── RECOMMENDATION ── */
+  .recommendation {
+    font-size: 10.5pt;
+    line-height: 1.65;
+    color: var(--ink);
+    padding: 14px 16px;
+    background: var(--surface);
+    border-radius: 4px;
+  }
+
+  /* ── SOURCES TABLE ── */
+  .sources-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+  .sources-table tr { border-bottom: 1px solid var(--border); }
+  .sources-table tr:last-child { border-bottom: none; }
+  .sources-table td { padding: 8px 6px; vertical-align: top; }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-top: 3px;
+  }
+  .dot.green  { background: var(--green);  }
+  .dot.yellow { background: var(--yellow); }
+  .dot.red    { background: var(--red);    }
+  .dot.gray   { background: var(--ink-xsoft); }
+
+  .src-name {
+    font-weight: 700;
+    color: var(--ink);
+    white-space: nowrap;
+    padding-right: 12px;
+    width: 42mm;
+  }
+  .src-category {
+    display: block;
+    font-size: 7.5pt;
+    color: var(--ink-xsoft);
+    font-weight: 400;
+    margin-top: 1px;
+  }
+  .src-detail { color: var(--ink-soft); line-height: 1.5; }
+
+  /* ── SANCTION BANNER ── */
+  .sanction-banner {
+    background: var(--red-bg);
+    border: 1.5px solid var(--red);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    font-size: 10pt;
+    color: var(--red);
+    font-weight: 600;
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 7.5pt;
+    color: var(--ink-xsoft);
+    line-height: 1.6;
+  }
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .footer-disclaimer { flex: 1; }
+  .footer-brand { text-align: right; white-space: nowrap; }
+  .footer-brand strong { color: var(--ink-soft); }
+
+  /* ── PRINT ── */
+  @media print {
+    .screen-only { display: none !important; }
+    body { font-size: 10pt; }
+    .page { padding: 14mm 14mm 12mm; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+
+    .risk-box, .recommendation, .meta-table tr:nth-child(odd) td {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .dot {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Nur auf Bildschirm sichtbar -->
+<div class="screen-only">
+  <span>Clearifyer · Vorschau Risikobericht</span>
+  <button class="btn-print" onclick="window.print()">Als PDF speichern</button>
+</div>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Clearifyer</h1>
+      <p>Blockchain-Adress-Risikobericht</p>
+    </div>
+    <div class="header-right">
+      <strong id="report-date">23.06.2026 · 14:37 Uhr</strong><br>
+      Erstellt von Clearifyer<br>
+      Alefy GmbH · clearifyer.io
+    </div>
+  </div>
+
+  <!-- META -->
+  <table class="meta-table">
+    <tr>
+      <td class="meta-key">Adresse</td>
+      <td class="meta-val" id="meta-address">0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045</td>
+    </tr>
+    <tr>
+      <td class="meta-key">ENS-Name</td>
+      <td class="meta-val normal" id="meta-ens">vitalik.eth</td>
+    </tr>
+    <tr>
+      <td class="meta-key">Blockchain</td>
+      <td class="meta-val normal" id="meta-chain">Ethereum</td>
+    </tr>
+    <tr>
+      <td class="meta-key">Kontext</td>
+      <td class="meta-val normal" id="meta-context">Von einer offiziellen Projektwebseite erhalten</td>
+    </tr>
+    <tr>
+      <td class="meta-key">Berichts-ID</td>
+      <td class="meta-val" id="meta-id">CLR-20260623-00847</td>
+    </tr>
+  </table>
+
+  <!-- SANKTION BANNER (nur wenn sanctioned=true) -->
+  <div class="sanction-banner" id="sanction-banner" style="display:none">
+    ⛔ SANKTIONSTREFFER — Diese Adresse steht auf einer offiziellen Sanktionsliste.
+    Transaktionen sind rechtlich verboten und können strafrechtliche Konsequenzen haben.
+  </div>
+
+  <!-- RISIKO-BOX -->
+  <div class="risk-box low" id="risk-box">
+    <div class="risk-score" id="risk-score">12</div>
+    <div>
+      <div class="risk-label" id="risk-label">Geringes Risiko</div>
+      <div class="risk-desc" id="risk-desc">
+        Risikoscore von 12 von 100 — basierend auf 7 unabhängigen Datenquellen.
+      </div>
+    </div>
+  </div>
+
+  <!-- EMPFEHLUNG -->
+  <div class="section-heading">Empfehlung</div>
+  <div class="recommendation" id="recommendation">
+    Diese Adresse ist als Wallet von Vitalik Buterin, dem Mitgründer von Ethereum, bekannt.
+    Es gibt keine Hinweise auf betrügerische Aktivitäten. Die Adresse steht auf keiner Sanktionsliste.
+    Eine Transaktion kann als unbedenklich eingestuft werden.
+  </div>
+
+  <!-- QUELLENANALYSE -->
+  <div class="section-heading">Quellenanalyse</div>
+  <table class="sources-table" id="sources-table">
+    <!-- wird per JS befüllt -->
+  </table>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-row">
+      <div class="footer-disclaimer">
+        Dieser Bericht wurde automatisch durch Clearifyer (Alefy GmbH) erstellt und dient als
+        Entscheidungshilfe. Er ersetzt keine Rechts- oder Finanzberatung. Für verbindliche
+        Compliance-Entscheidungen wenden Sie sich an Ihren Compliance Officer.
+      </div>
+      <div class="footer-brand">
+        <strong>Clearifyer</strong><br>
+        Alefy GmbH<br>
+        clearifyer.io
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// ============================================================
+// Clearifyer Report Renderer
+// Aufruf: renderReport(data) mit dem API-Response-Objekt
+// ============================================================
+
+const SOURCES_CONFIG = [
+  { key: "ofac",         name: "OFAC SDN List",          category: "US-Sanktionen" },
+  { key: "eu_sanctions", name: "EU Financial Sanctions",  category: "EU-Sanktionen" },
+  { key: "chainabuse",   name: "Chainabuse",              category: "Scam-Datenbank" },
+  { key: "misttrack",    name: "MistTrack AML",           category: "AML-Forensik (SlowMist)" },
+  { key: "etherscan",    name: "Etherscan",               category: "On-Chain-Daten" },
+  { key: "velocity",     name: "Transaction Velocity",    category: "Verhaltensanalyse" },
+  { key: "address_type", name: "Contract Detection",      category: "Adress-Typ" },
+];
+
+function getDotClass(src) {
+  if (src.sanctioned) return "red";
+  if (src.risk === "high")   return "red";
+  if (src.risk === "medium") return "yellow";
+  if (src.risk === "low" || src.risk === "clear" || src.risk === "neutral") return "green";
+  return "gray";
+}
+
+function getRiskClass(score) {
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
+  return "low";
+}
+
+function getRiskLabel(score) {
+  if (score >= 70) return "Hohes Risiko";
+  if (score >= 40) return "Mittleres Risiko";
+  return "Geringes Risiko";
+}
+
+function generateReportId() {
+  const d = new Date();
+  const date = d.toISOString().slice(0,10).replace(/-/g,"");
+  const rand = Math.floor(Math.random() * 90000 + 10000);
+  return `CLR-${date}-${rand}`;
+}
+
+function renderReport(data) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("de-DE") + " · " +
+    now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + " Uhr";
+
+  // Header
+  document.getElementById("report-date").textContent = dateStr;
+
+  // Meta
+  const address = data.address || "–";
+  const ens = data.ens_name || "";
+  document.getElementById("meta-address").textContent = address;
+  document.getElementById("meta-ens").textContent = ens || "–";
+  document.getElementById("meta-chain").textContent = data.chain || "Ethereum";
+  document.getElementById("meta-context").textContent = data.context_answer || "–";
+  document.getElementById("meta-id").textContent = generateReportId();
+  document.getElementById("report-date").textContent = dateStr;
+
+  // Sanktions-Banner
+  const isSanctioned = data.sources?.ofac?.sanctioned || data.sources?.eu_sanctions?.sanctioned;
+  if (isSanctioned) {
+    document.getElementById("sanction-banner").style.display = "block";
+  }
+
+  // Risiko-Box
+  const score = data.risk_score ?? 0;
+  const riskClass = getRiskClass(score);
+  const riskBox = document.getElementById("risk-box");
+  riskBox.className = "risk-box " + riskClass;
+  document.getElementById("risk-score").textContent = score;
+  document.getElementById("risk-label").textContent = getRiskLabel(score);
+  document.getElementById("risk-desc").textContent =
+    `Risikoscore von ${score} von 100 — basierend auf ${Object.keys(data.sources || {}).length} unabhängigen Datenquellen.`;
+
+  // Empfehlung
+  document.getElementById("recommendation").textContent = data.recommendation || "–";
+
+  // Quellen
+  const tbody = document.getElementById("sources-table");
+  tbody.innerHTML = "";
+  for (const cfg of SOURCES_CONFIG) {
+    const src = (data.sources || {})[cfg.key];
+    if (!src) continue;
+    const dotClass = getDotClass(src);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="width:10px;padding-top:11px">
+        <span class="dot ${dotClass}"></span>
+      </td>
+      <td class="src-name">
+        ${cfg.name}
+        <span class="src-category">${cfg.category}</span>
+      </td>
+      <td class="src-detail">${src.detail || "–"}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  // Seitentitel
+  document.title = `Clearifyer Risikobericht · ${address.slice(0,10)}...`;
+}
+
+// ── Demo-Daten (werden in Produktion durch API-Response ersetzt) ──
+const DEMO_DATA = {
+  address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  ens_name: "vitalik.eth",
+  chain: "Ethereum",
+  context_answer: "Von einer offiziellen Projektwebseite erhalten",
+  risk_score: 12,
+  recommendation: "Diese Adresse ist als Wallet von Vitalik Buterin, dem Mitgründer von Ethereum, bekannt. Es gibt keine Hinweise auf betrügerische Aktivitäten. Die Adresse steht auf keiner Sanktionsliste. Eine Transaktion kann als unbedenklich eingestuft werden.",
+  sources: {
+    ofac:         { detail: "Nicht auf der OFAC SDN-Liste (US Treasury) gefunden.", sanctioned: false, risk: "clear" },
+    eu_sanctions: { detail: "Nicht auf der EU-Sanktionsliste (Financial Sanctions File) gefunden.", sanctioned: false, risk: "clear" },
+    chainabuse:   { detail: "Keine Scam-Meldungen auf Chainabuse.", risk: "low" },
+    misttrack:    { detail: "Bekannte Entität: Ethereum-Gründer. Labels: public figure, eth-foundation.", risk: "low" },
+    etherscan:    { detail: "Wallet aktiv seit 2015. 2.847 Transaktionen. Guthaben: 1.234 ETH.", risk: "low" },
+    velocity:     { detail: "3 Transaktionen in den letzten 24h — unauffällig.", risk: "low" },
+    address_type: { detail: "Normale Wallet-Adresse (kein Smart Contract).", risk: "neutral" },
+  }
+};
+
+// Beim Laden rendern
+renderReport(DEMO_DATA);
+
+// ── Produktion: So wird der Report von der Netlify-Function aufgerufen ──
+// Nach der API-Antwort:
+//   const reportWindow = window.open("/report.html");
+//   reportWindow.onload = () => reportWindow.renderReport(apiResponse);
+//   reportWindow.print(); // optional: direkt drucken
+</script>
+</body>
+</html>
