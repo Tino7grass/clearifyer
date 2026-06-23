@@ -1,0 +1,8 @@
+{
+  "name": "clearifyer",
+  "version": "2.0.0",
+  "description": "Blockchain address risk verification",
+  "dependencies": {
+    "@netlify/blobs": "^7.0.0"
+  }
+}
