@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Clearifyer — Know before you send</title>
 <meta name="description" content="Prüfe Blockchain-Adressen auf Betrugsrisiken bevor du Krypto sendest. Kostenlos, DACH, Deutsch.">
-<meta property="og:title" content="Clearifyer — Know before you send">
-<meta property="og:description" content="Blockchain-Adress-Prüfung gegen Krypto-Betrug. Echtzeit-Analyse auf Deutsch.">
 <style>
   :root {
     --bg:      #0a0f1e;
@@ -128,9 +126,9 @@
   .reco strong { color: var(--text); }
 
   .actions { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
-  .action-primary   { padding: 0.8rem; border-radius: 10px; background: var(--red);     color: #fff;          font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; }
-  .action-secondary { padding: 0.8rem; border-radius: 10px; background: var(--surface); color: var(--text);   font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); cursor: pointer; }
-  .action-tertiary  { padding: 0.8rem; border-radius: 10px; background: transparent;    color: var(--muted);  font-size: 0.85rem; border: 1px solid var(--border); cursor: pointer; }
+  .action-primary   { padding: 0.8rem; border-radius: 10px; background: var(--red);     color: #fff;        font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; }
+  .action-secondary { padding: 0.8rem; border-radius: 10px; background: var(--surface); color: var(--text); font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); cursor: pointer; }
+  .action-tertiary  { padding: 0.8rem; border-radius: 10px; background: transparent;    color: var(--muted); font-size: 0.85rem; border: 1px solid var(--border); cursor: pointer; }
   .action-report    { padding: 0.8rem; border-radius: 10px; background: rgba(59,130,246,.12); color: var(--blue); font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(59,130,246,.3); cursor: pointer; }
   .action-report:hover { background: rgba(59,130,246,.2); }
 
@@ -183,19 +181,19 @@
 
   <div class="ctx-card">
     <div class="ctx-q">Wie hast du diese Adresse erhalten?</div>
-    <div class="ctx-opt" onclick="selectCtx(this, 'support')">
+    <div class="ctx-opt" id="ctx-support" onclick="selectCtx('support')">
       <div class="ctx-radio"></div><span>💬</span>
       <span>Support schickte sie mir (Telegram, WhatsApp, E-Mail)</span>
     </div>
-    <div class="ctx-opt" onclick="selectCtx(this, 'website')">
+    <div class="ctx-opt" id="ctx-website" onclick="selectCtx('website')">
       <div class="ctx-radio"></div><span>🌐</span>
       <span>Offizielle Website oder App</span>
     </div>
-    <div class="ctx-opt" onclick="selectCtx(this, 'friend')">
+    <div class="ctx-opt" id="ctx-friend" onclick="selectCtx('friend')">
       <div class="ctx-radio"></div><span>👤</span>
       <span>Freund oder Bekannter</span>
     </div>
-    <div class="ctx-opt" onclick="selectCtx(this, 'email')">
+    <div class="ctx-opt" id="ctx-email" onclick="selectCtx('email')">
       <div class="ctx-radio"></div><span>📧</span>
       <span>E-Mail oder unbekannte Quelle</span>
     </div>
@@ -241,57 +239,66 @@
 </footer>
 
 <script>
-let selectedNetwork = 'eth';
-let selectedContext = '';
-let lastResult = null;
+var selectedNetwork = 'eth';
+var selectedContext = '';
+var lastResult = null;
 
-const patterns = {
+var patterns = {
   eth:   /^0x[0-9a-fA-F]{40}$/,
   bnb:   /^0x[0-9a-fA-F]{40}$/,
   matic: /^0x[0-9a-fA-F]{40}$/,
   btc:   /^(1|3)[1-9A-HJ-NP-Za-km-z]{25,34}$|^bc1[0-9a-z]{6,87}$/,
   sol:   /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
-  trx:   /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
+  trx:   /^T[1-9A-HJ-NP-Za-km-z]{33}$/
 };
 
 function onAddrInput(el) {
-  const addr = el.value.trim();
-  // ENS-Namen (.eth) immer als gültig behandeln
-  const isENS = addr.toLowerCase().endsWith('.eth');
-  const valid = isENS || patterns[selectedNetwork]?.test(addr);
+  var addr = el.value.trim();
+  var isENS = addr.toLowerCase().endsWith('.eth');
+  var valid = isENS || (patterns[selectedNetwork] && patterns[selectedNetwork].test(addr));
   el.className = 'addr' + (addr.length > 5 ? (valid ? ' addr-valid' : ' addr-invalid') : '');
   updateSubmitState();
 }
 
 function selectNet(btn) {
-  document.querySelectorAll('.net-btn').forEach(b => b.classList.remove('active'));
+  var btns = document.querySelectorAll('.net-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
   btn.classList.add('active');
   selectedNetwork = btn.dataset.net;
   onAddrInput(document.getElementById('addr'));
 }
 
-function selectCtx(el, val) {
-  document.querySelectorAll('.ctx-opt').forEach(o => o.classList.remove('active'));
-  el.classList.add('active');
+function selectCtx(val) {
+  var opts = document.querySelectorAll('.ctx-opt');
+  for (var i = 0; i < opts.length; i++) opts[i].classList.remove('active');
+  var el = document.getElementById('ctx-' + val);
+  if (el) el.classList.add('active');
   selectedContext = val;
   updateSubmitState();
 }
 
 function updateSubmitState() {
-  const addr = document.getElementById('addr').value.trim();
-  const ready = addr.length > 5 && selectedContext !== '';
+  var addr = document.getElementById('addr').value.trim();
+  var ready = addr.length > 5 && selectedContext !== '';
   document.getElementById('btnSubmit').disabled = !ready;
   document.getElementById('hint').textContent = !addr
     ? 'Adresse eingeben und Quelle auswählen'
     : !selectedContext ? 'Bitte Quelle der Adresse auswählen' : '';
 }
 
+function openReport() {
+  if (!lastResult) return;
+  var encoded = encodeURIComponent(JSON.stringify(lastResult));
+  var win = window.open('/report.html?data=' + encoded, '_blank');
+  if (!win) alert('Bitte Pop-ups für clearifyer.netlify.app erlauben.');
+}
+
 async function runCheck() {
-  const addr    = document.getElementById('addr').value.trim();
-  const amount  = document.getElementById('amount').value.trim();
-  const btn     = document.getElementById('btnSubmit');
-  const resultDiv = document.getElementById('result');
-  const inner   = document.getElementById('result-inner');
+  var addr = document.getElementById('addr').value.trim();
+  var amount = document.getElementById('amount').value.trim();
+  var btn = document.getElementById('btnSubmit');
+  var resultDiv = document.getElementById('result');
+  var inner = document.getElementById('result-inner');
 
   btn.disabled = true;
   resultDiv.style.display = 'block';
@@ -299,183 +306,129 @@ async function runCheck() {
   resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
-    const res = await fetch('/.netlify/functions/check', {
+    var res = await fetch('/.netlify/functions/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addr, network: selectedNetwork, context: selectedContext, amount })
+      body: JSON.stringify({ addr: addr, network: selectedNetwork, context: selectedContext, amount: amount })
     });
-    const data = await res.json();
+    var data = await res.json();
     if (data.error) throw new Error(data.error);
-    lastResult = { ...data, context_answer: selectedContext, amount };
+    lastResult = data;
+    lastResult.context_answer = selectedContext;
     renderResult(data);
-  } catch (e) {
-    inner.innerHTML = `
-      <div class="verdict warn">
-        <span class="verdict-icon">⚠️</span>
-        <div>Fehler bei der Analyse.<br>
-        <small style="font-weight:400;opacity:.7">${e.message}</small></div>
-      </div>`;
+  } catch(e) {
+    inner.innerHTML = '<div class="verdict warn"><span class="verdict-icon">⚠️</span><div>Fehler bei der Analyse.<br><small style="font-weight:400;opacity:.7">' + e.message + '</small></div></div>';
   }
   btn.disabled = false;
 }
 
-function openReport() {
-  if (!lastResult) return;
-  const encoded = encodeURIComponent(JSON.stringify(lastResult));
-  const win = window.open(\`/report.html?data=${encoded}\`, '_blank');
-  if (!win) alert('Bitte Pop-ups für clearifyer.netlify.app erlauben.');
-}
-
 function renderResult(r) {
-  const inner = document.getElementById('result-inner');
-  const score  = r.riskScore ?? 0;
-  const isHigh = score >= 70;
-  const isMid  = score >= 40;
-  const color  = isHigh ? 'var(--red)' : isMid ? 'var(--amber)' : 'var(--green)';
-  const vClass = isHigh ? 'danger' : isMid ? 'warn' : 'ok';
-  const icon   = isHigh ? '🚨' : isMid ? '⚠️' : '✅';
+  var inner = document.getElementById('result-inner');
+  var score = r.riskScore || 0;
+  var isHigh = score >= 70;
+  var isMid  = score >= 40;
+  var color  = isHigh ? 'var(--red)' : isMid ? 'var(--amber)' : 'var(--green)';
+  var vClass = isHigh ? 'danger' : isMid ? 'warn' : 'ok';
+  var icon   = isHigh ? '🚨' : isMid ? '⚠️' : '✅';
 
-  const findingsHtml = (r.findings || []).map(f =>
-    `<li><span class="ftag ${f.level}">${f.label}</span><span>${f.text}</span></li>`
-  ).join('');
-
-  // Sanktions-Banner
-  let sanctionHtml = '';
-  if (r.sanctioned) {
-    sanctionHtml = `
-      <div style="background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.5);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:var(--red);font-weight:600;">
-        ⛔ SANKTIONSTREFFER: ${r.sanctionSource || 'Sanktionsliste'}<br>
-        <span style="font-weight:400;font-size:0.8rem;color:rgba(239,68,68,.8)">Transaktionen mit dieser Adresse sind rechtlich verboten.</span>
-      </div>`;
+  var findingsHtml = '';
+  var findings = r.findings || [];
+  for (var i = 0; i < findings.length; i++) {
+    findingsHtml += '<li><span class="ftag ' + findings[i].level + '">' + findings[i].label + '</span><span>' + findings[i].text + '</span></li>';
   }
 
-  // OFAC + EU
-  let sanctionDataHtml = '';
+  // Sanktions-Banner
+  var sanctionHtml = '';
+  if (r.sanctioned) {
+    sanctionHtml = '<div style="background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.5);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:var(--red);font-weight:600;">⛔ SANKTIONSTREFFER: ' + (r.sanctionSource || 'Sanktionsliste') + '<br><span style="font-weight:400;font-size:0.8rem;opacity:.8">Transaktionen mit dieser Adresse sind rechtlich verboten.</span></div>';
+  }
+
+  // Sanktionslisten-Kacheln
+  var sanctionDataHtml = '';
   if (r.ofac || r.euSanctions) {
-    sanctionDataHtml = `
-      <div class="card-label" style="margin-top:0.5rem">Sanktionslisten</div>
-      <div class="data-grid">
-        ${r.ofac ? `<div class="data-cell"><div class="dc-label">OFAC SDN (USA)</div><div class="dc-value" style="font-size:0.75rem;color:${r.ofac.sanctioned?'var(--red)':'var(--green)'}">${r.ofac.sanctioned?'⛔ Treffer':'✅ Kein Treffer'}</div></div>` : ''}
-        ${r.euSanctions ? `<div class="data-cell"><div class="dc-label">EU-Sanktionen</div><div class="dc-value" style="font-size:0.75rem;color:${r.euSanctions.sanctioned?'var(--red)':'var(--green)'}">${r.euSanctions.sanctioned?'⛔ Treffer':'✅ Kein Treffer'}</div></div>` : ''}
-      </div>`;
+    sanctionDataHtml = '<div class="card-label" style="margin-top:0.5rem">Sanktionslisten</div><div class="data-grid">';
+    if (r.ofac) sanctionDataHtml += '<div class="data-cell"><div class="dc-label">OFAC SDN (USA)</div><div class="dc-value" style="font-size:0.75rem;color:' + (r.ofac.sanctioned ? 'var(--red)' : 'var(--green)') + '">' + (r.ofac.sanctioned ? '⛔ Treffer' : '✅ Kein Treffer') + '</div></div>';
+    if (r.euSanctions) sanctionDataHtml += '<div class="data-cell"><div class="dc-label">EU-Sanktionen</div><div class="dc-value" style="font-size:0.75rem;color:' + (r.euSanctions.sanctioned ? 'var(--red)' : 'var(--green)') + '">' + (r.euSanctions.sanctioned ? '⛔ Treffer' : '✅ Kein Treffer') + '</div></div>';
+    sanctionDataHtml += '</div>';
   }
 
   // On-Chain
-  let onChainHtml = '';
+  var onChainHtml = '';
   if (r.onChain && !r.onChain.error && !r.onChain.skipped) {
-    const oc = r.onChain;
-    onChainHtml = `
-      <div class="card-label" style="margin-top:0.5rem">On-Chain Daten (Etherscan)</div>
-      <div class="data-grid">
-        ${oc.balanceEth  != null ? `<div class="data-cell"><div class="dc-label">Kontostand</div><div class="dc-value">${oc.balanceEth} ETH</div></div>` : ''}
-        ${oc.txCount     != null ? `<div class="data-cell"><div class="dc-label">Transaktionen</div><div class="dc-value">${oc.txCount}</div></div>` : ''}
-        ${oc.firstTxDate        ? `<div class="data-cell"><div class="dc-label">Erste TX</div><div class="dc-value">${oc.firstTxDate}</div></div>` : ''}
-        ${oc.receivesOnly != null ? `<div class="data-cell"><div class="dc-label">Nur Empfang</div><div class="dc-value" style="color:${oc.receivesOnly?'var(--amber)':'var(--green)'}">${oc.receivesOnly?'Ja ⚠️':'Nein ✓'}</div></div>` : ''}
-        ${oc.velocity ? `<div class="data-cell"><div class="dc-label">Velocity 24h</div><div class="dc-value" style="font-size:0.75rem;color:${oc.velocity.risk==='high'?'var(--red)':oc.velocity.risk==='medium'?'var(--amber)':'var(--green)'}">${oc.velocity.velocity24h} TX</div></div>` : ''}
-        ${oc.contract ? `<div class="data-cell"><div class="dc-label">Adress-Typ</div><div class="dc-value" style="font-size:0.72rem;color:${oc.contract.risk==='high'?'var(--red)':'var(--green)'}">${oc.contract.isContract?'Contract':'Wallet ✓'}</div></div>` : ''}
-      </div>`;
+    var oc = r.onChain;
+    onChainHtml = '<div class="card-label" style="margin-top:0.5rem">On-Chain Daten (Etherscan)</div><div class="data-grid">';
+    if (oc.balanceEth  != null) onChainHtml += '<div class="data-cell"><div class="dc-label">Kontostand</div><div class="dc-value">' + oc.balanceEth + ' ETH</div></div>';
+    if (oc.txCount     != null) onChainHtml += '<div class="data-cell"><div class="dc-label">Transaktionen</div><div class="dc-value">' + oc.txCount + '</div></div>';
+    if (oc.firstTxDate)         onChainHtml += '<div class="data-cell"><div class="dc-label">Erste TX</div><div class="dc-value">' + oc.firstTxDate + '</div></div>';
+    if (oc.receivesOnly != null) onChainHtml += '<div class="data-cell"><div class="dc-label">Nur Empfang</div><div class="dc-value" style="color:' + (oc.receivesOnly ? 'var(--amber)' : 'var(--green)') + '">' + (oc.receivesOnly ? 'Ja ⚠️' : 'Nein ✓') + '</div></div>';
+    if (oc.velocity)            onChainHtml += '<div class="data-cell"><div class="dc-label">Velocity 24h</div><div class="dc-value" style="color:' + (oc.velocity.risk === 'high' ? 'var(--red)' : oc.velocity.risk === 'medium' ? 'var(--amber)' : 'var(--green)') + '">' + oc.velocity.velocity24h + ' TX</div></div>';
+    if (oc.contract)            onChainHtml += '<div class="data-cell"><div class="dc-label">Adress-Typ</div><div class="dc-value" style="font-size:0.75rem;color:' + (oc.contract.risk === 'high' ? 'var(--red)' : 'var(--green)') + '">' + (oc.contract.isContract ? 'Contract' : 'Wallet ✓') + '</div></div>';
+    onChainHtml += '</div>';
   }
 
   // Chainabuse
-  let chainabuseHtml = '';
+  var chainabuseHtml = '';
   if (r.chainabuse) {
-    const ca = r.chainabuse;
-    chainabuseHtml = `
-      <div class="card-label" style="margin-top:0.5rem">Chainabuse Datenbank</div>
-      <div class="data-grid">
-        <div class="data-cell">
-          <div class="dc-label">Scam-Meldungen</div>
-          <div class="dc-value" style="color:${ca.reports>0?'var(--red)':'var(--green)'}">${ca.reports} ${ca.reports>0?'⚠️':'✓'}</div>
-        </div>
-        ${ca.categories?.length ? `<div class="data-cell"><div class="dc-label">Kategorie</div><div class="dc-value" style="font-size:0.75rem">${ca.categories[0]}</div></div>` : ''}
-      </div>`;
+    var ca = r.chainabuse;
+    chainabuseHtml = '<div class="card-label" style="margin-top:0.5rem">Chainabuse Datenbank</div><div class="data-grid"><div class="data-cell"><div class="dc-label">Scam-Meldungen</div><div class="dc-value" style="color:' + (ca.reports > 0 ? 'var(--red)' : 'var(--green)') + '">' + ca.reports + ' ' + (ca.reports > 0 ? '⚠️' : '✓') + '</div></div>';
+    if (ca.categories && ca.categories.length) chainabuseHtml += '<div class="data-cell"><div class="dc-label">Kategorie</div><div class="dc-value" style="font-size:0.75rem">' + ca.categories[0] + '</div></div>';
+    chainabuseHtml += '</div>';
   }
 
   // MistTrack
-  let misttrackHtml = '';
-  if (r.misttrack?.available) {
-    const mt = r.misttrack;
-    misttrackHtml = `
-      <div class="card-label" style="margin-top:0.5rem">MistTrack AML</div>
-      <div class="data-grid">
-        <div class="data-cell">
-          <div class="dc-label">Risiko</div>
-          <div class="dc-value" style="font-size:0.75rem;color:${mt.risk==='high'?'var(--red)':mt.risk==='medium'?'var(--amber)':'var(--green)'}">${mt.riskScore ?? '–'}/100</div>
-        </div>
-        ${mt.labels?.length ? `<div class="data-cell"><div class="dc-label">Labels</div><div class="dc-value" style="font-size:0.7rem">${mt.labels.slice(0,2).join(', ')}</div></div>` : ''}
-      </div>`;
+  var misttrackHtml = '';
+  if (r.misttrack && r.misttrack.available) {
+    var mt = r.misttrack;
+    misttrackHtml = '<div class="card-label" style="margin-top:0.5rem">MistTrack AML</div><div class="data-grid"><div class="data-cell"><div class="dc-label">Score</div><div class="dc-value" style="color:' + (mt.risk === 'high' ? 'var(--red)' : mt.risk === 'medium' ? 'var(--amber)' : 'var(--green)') + '">' + (mt.riskScore != null ? mt.riskScore : '–') + '/100</div></div>';
+    if (mt.labels && mt.labels.length) misttrackHtml += '<div class="data-cell"><div class="dc-label">Labels</div><div class="dc-value" style="font-size:0.7rem">' + mt.labels.slice(0,2).join(', ') + '</div></div>';
+    misttrackHtml += '</div>';
   }
 
-  const explorerLinks = buildExplorerLinks(r.addr, r.network);
-  const displayAddr = r.ensName ? `${r.ensName} (${r.addr})` : r.addr;
+  var displayAddr = r.ensName ? r.ensName + ' (' + r.addr + ')' : r.addr;
+  var explorerLinks = buildExplorerLinks(r.addr, r.network);
 
-  inner.innerHTML = `
-    <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">
-      ${displayAddr}
-    </div>
-
-    ${sanctionHtml}
-
-    <div class="score-row">
-      <span>Risiko-Score</span>
-      <span class="score-val" style="color:${color}">${score}/100 · ${r.riskLevel}</span>
-    </div>
-    <div class="score-track">
-      <div class="score-fill" style="width:${score}%;background:${color}"></div>
-    </div>
-
-    <div class="verdict ${vClass}">
-      <span class="verdict-icon">${icon}</span>
-      <span>${r.summary}</span>
-    </div>
-
-    ${sanctionDataHtml}
-    ${onChainHtml}
-    ${chainabuseHtml}
-    ${misttrackHtml}
-
-    <div class="card-label" style="margin-top:0.5rem">Befunde</div>
-    <ul class="findings">${findingsHtml}</ul>
-
-    <div class="reco"><strong>Empfehlung:</strong> ${r.recommendation}</div>
-
-    <div class="actions">
-      ${isHigh ? '<button class="action-primary" onclick="window.location.reload()">⛔ Transaktion abbrechen — neu prüfen</button>' : ''}
-      <button class="action-report" onclick="openReport()">📄 Compliance-Report herunterladen</button>
-      <button class="action-tertiary" onclick="newCheck()">🔍 Neue Adresse prüfen</button>
-    </div>
-
-    <div class="card-label" style="margin-top:0.5rem">Selbst nachprüfen</div>
-    <div class="explorer-links">${explorerLinks}</div>
-
-    <div class="disclaimer">
-      ⚠️ <strong>Kein Freifahrtschein.</strong> Diese Prüfung ist eine Entscheidungshilfe.
-      Blockchain-Transaktionen sind unwiderruflich. Bei großen Beträgen zusätzlich
-      manuell auf <strong>chainabuse.com</strong> prüfen und 24 Stunden warten.
-    </div>`;
+  inner.innerHTML =
+    '<div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">' + displayAddr + '</div>' +
+    sanctionHtml +
+    '<div class="score-row"><span>Risiko-Score</span><span class="score-val" style="color:' + color + '">' + score + '/100 · ' + r.riskLevel + '</span></div>' +
+    '<div class="score-track"><div class="score-fill" style="width:' + score + '%;background:' + color + '"></div></div>' +
+    '<div class="verdict ' + vClass + '"><span class="verdict-icon">' + icon + '</span><span>' + r.summary + '</span></div>' +
+    sanctionDataHtml + onChainHtml + chainabuseHtml + misttrackHtml +
+    '<div class="card-label" style="margin-top:0.5rem">Befunde</div>' +
+    '<ul class="findings">' + findingsHtml + '</ul>' +
+    '<div class="reco"><strong>Empfehlung:</strong> ' + r.recommendation + '</div>' +
+    '<div class="actions">' +
+    (isHigh ? '<button class="action-primary" onclick="window.location.reload()">⛔ Transaktion abbrechen — neu prüfen</button>' : '') +
+    '<button class="action-report" onclick="openReport()">📄 Compliance-Report herunterladen</button>' +
+    '<button class="action-tertiary" onclick="newCheck()">🔍 Neue Adresse prüfen</button>' +
+    '</div>' +
+    '<div class="card-label" style="margin-top:0.5rem">Selbst nachprüfen</div>' +
+    '<div class="explorer-links">' + explorerLinks + '</div>' +
+    '<div class="disclaimer">⚠️ <strong>Kein Freifahrtschein.</strong> Diese Prüfung ist eine Entscheidungshilfe. Blockchain-Transaktionen sind unwiderruflich. Bei großen Beträgen zusätzlich manuell auf <strong>chainabuse.com</strong> prüfen und 24 Stunden warten.</div>';
 }
 
 function buildExplorerLinks(addr, network) {
-  const maps = {
-    eth:   `https://etherscan.io/address/${addr}`,
-    bnb:   `https://bscscan.com/address/${addr}`,
-    matic: `https://polygonscan.com/address/${addr}`,
-    trx:   `https://tronscan.org/#/address/${addr}`,
-    btc:   `https://mempool.space/address/${addr}`,
-    sol:   `https://solscan.io/account/${addr}`,
+  var maps = {
+    eth:   'https://etherscan.io/address/' + addr,
+    bnb:   'https://bscscan.com/address/' + addr,
+    matic: 'https://polygonscan.com/address/' + addr,
+    trx:   'https://tronscan.org/#/address/' + addr,
+    btc:   'https://mempool.space/address/' + addr,
+    sol:   'https://solscan.io/account/' + addr
   };
-  const links = [];
-  if (maps[network]) links.push({ label: 'Block Explorer', url: maps[network] });
-  links.push({ label: 'Chainabuse', url: `https://www.chainabuse.com/address/${addr}` });
-  links.push({ label: 'Bitquery', url: `https://explorer.bitquery.io/search?query=${addr}` });
-  return links.map(l => `<a class="explorer-link" href="${l.url}" target="_blank" rel="noopener">${l.label} ↗</a>`).join('');
+  var html = '';
+  if (maps[network]) html += '<a class="explorer-link" href="' + maps[network] + '" target="_blank" rel="noopener">Block Explorer ↗</a>';
+  html += '<a class="explorer-link" href="https://www.chainabuse.com/address/' + addr + '" target="_blank" rel="noopener">Chainabuse ↗</a>';
+  html += '<a class="explorer-link" href="https://explorer.bitquery.io/search?query=' + addr + '" target="_blank" rel="noopener">Bitquery ↗</a>';
+  return html;
 }
 
 function newCheck() {
   document.getElementById('result').style.display = 'none';
   document.getElementById('addr').value = '';
   document.getElementById('addr').className = 'addr';
-  document.querySelectorAll('.ctx-opt').forEach(o => o.classList.remove('active'));
+  var opts = document.querySelectorAll('.ctx-opt');
+  for (var i = 0; i < opts.length; i++) opts[i].classList.remove('active');
   selectedContext = '';
   lastResult = null;
   updateSubmitState();
