@@ -179,9 +179,9 @@ async function fetchEtherscan(addr, network) {
     if (velocity24h > 20)     { velocityRisk = "high";   velocityDetail = `🚨 ${velocity24h} Transaktionen in 24h — möglicher Mixer/Tumbler.`; }
     else if (velocity24h > 5) { velocityRisk = "medium"; velocityDetail = `⚠️ ${velocity24h} Transaktionen in 24h — erhöhte Aktivität.`; }
 
-    // Contract Detection — nur wenn Bytecode eindeutig vorhanden
+    // Contract Detection — nur wenn Bytecode eindeutig vorhanden (mind. 100 Zeichen)
     const bytecode = codeData.result;
-    const isContract = typeof bytecode === "string" && bytecode !== "0x" && bytecode !== "" && bytecode.length > 10;
+    const isContract = typeof bytecode === "string" && bytecode !== "0x" && bytecode !== "" && bytecode.length > 100;
     let contractRisk = "neutral";
     let contractDetail = "✅ Normale Wallet-Adresse (kein Smart Contract).";
 
