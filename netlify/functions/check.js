@@ -288,8 +288,12 @@ async function checkMistTrack(address, network) {
 
 async function writeAuditLog(entry) {
   try {
-    const store = getStore("clearifyer-audit-log");
-    const id    = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const store = getStore({
+      name: "clearifyer-audit-log",
+      siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
+      token: process.env.NETLIFY_TOKEN
+    });
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await store.setJSON(id, { id, timestamp: new Date().toISOString(), ...entry });
   } catch (e) {
     console.error("Audit-Log Fehler:", e.message);
