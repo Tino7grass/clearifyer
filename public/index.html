@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clearifyer – Blockchain-Adressen sicher prüfen</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy: #0A1628;
+      --navy-mid: #112040;
+      --blue: #2563EB;
+      --blue-light: #3B82F6;
+      --white: #FFFFFF;
+      --gray-50: #F8FAFC;
+      --gray-100: #F1F5F9;
+      --gray-300: #CBD5E1;
+      --gray-500: #64748B;
+      --gray-700: #334155;
+      --green: #10B981;
+      --red: #EF4444;
+      --amber: #F59E0B;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--white);
+      color: var(--navy);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10, 22, 40, 0.97);
+      backdrop-filter: blur(8px);
+      padding: 0 2rem;
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-logo {
+      font-size: 1.2rem; font-weight: 700; color: var(--white);
+      letter-spacing: -0.02em;
+    }
+    .nav-logo span { color: var(--blue-light); }
+    .nav-cta {
+      background: var(--blue);
+      color: var(--white);
+      padding: 0.45rem 1.1rem;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: var(--blue-light); }
+
+    /* HERO */
+    .hero {
+      background: var(--navy);
+      padding: 140px 2rem 100px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -200px; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 800px;
+      background: radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.75rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--blue-light);
+      background: rgba(37,99,235,0.12);
+      border: 1px solid rgba(59,130,246,0.25);
+      padding: 0.3rem 0.9rem;
+      border-radius: 100px;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.25rem);
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      max-width: 720px;
+      margin: 0 auto 1.25rem;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--blue-light);
+    }
+    .hero-sub {
+      font-size: 1.05rem;
+      color: var(--gray-300);
+      max-width: 520px;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+    }
+    .btn-primary {
+      background: var(--blue);
+      color: var(--white);
+      padding: 0.8rem 2rem;
+      border-radius: 8px;
+      font-size: 1rem; font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-primary:hover { background: var(--blue-light); transform: translateY(-1px); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--gray-300);
+      padding: 0.8rem 2rem;
+      border-radius: 8px;
+      font-size: 1rem; font-weight: 500;
+      text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.15);
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.35); color: var(--white); }
+
+    /* DEMO WIDGET */
+    .demo-wrap {
+      margin: 4rem auto 0;
+      max-width: 560px;
+      background: var(--navy-mid);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      overflow: hidden;
+      text-align: left;
+    }
+    .demo-bar {
+      background: rgba(255,255,255,0.04);
+      padding: 0.6rem 1rem;
+      display: flex; align-items: center; gap: 0.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .demo-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .demo-title-bar {
+      font-size: 0.75rem; color: var(--gray-500); margin-left: 0.25rem;
+    }
+    .demo-body { padding: 1.5rem; }
+    .demo-label {
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--gray-500); margin-bottom: 0.5rem;
+    }
+    .demo-addr {
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem; color: var(--gray-300);
+      background: rgba(0,0,0,0.2);
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 1rem;
+      word-break: break-all;
+    }
+    .demo-result {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.8rem 1rem;
+      border-radius: 8px;
+      background: rgba(16,185,129,0.08);
+      border: 1px solid rgba(16,185,129,0.2);
+    }
+    .demo-result-icon {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: rgba(16,185,129,0.15);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 1rem;
+    }
+    .demo-result-text strong {
+      display: block; font-size: 0.875rem; font-weight: 600; color: var(--green);
+    }
+    .demo-result-text span {
+      font-size: 0.775rem; color: var(--gray-500); line-height: 1.4;
+    }
+    .demo-score {
+      display: flex; justify-content: flex-end; margin-top: 1rem;
+      gap: 0.4rem; align-items: center;
+    }
+    .score-bar {
+      height: 4px; border-radius: 2px; flex: 1;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+    .score-fill {
+      height: 100%; border-radius: 2px;
+      background: var(--green);
+      width: 0%;
+      transition: width 1.2s ease;
+    }
+    .score-label { font-size: 0.7rem; color: var(--gray-500); white-space: nowrap; }
+
+    /* TRUST BAR */
+    .trust-bar {
+      background: var(--gray-50);
+      border-top: 1px solid var(--gray-100);
+      border-bottom: 1px solid var(--gray-100);
+      padding: 1.25rem 2rem;
+      text-align: center;
+    }
+    .trust-bar p {
+      font-size: 0.8rem; font-weight: 500; color: var(--gray-500);
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .trust-items {
+      display: flex; justify-content: center; align-items: center;
+      gap: 2.5rem; flex-wrap: wrap; margin-top: 0.75rem;
+    }
+    .trust-item {
+      font-size: 0.8rem; font-weight: 600; color: var(--gray-700);
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .trust-item svg { color: var(--blue); }
+
+    /* PROBLEM */
+    .section { padding: 80px 2rem; }
+    .section-inner { max-width: 1000px; margin: 0 auto; }
+    .section-eyebrow {
+      font-size: 0.75rem; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--blue); margin-bottom: 0.75rem;
+    }
+    .section h2 {
+      font-size: clamp(1.6rem, 3vw, 2.25rem);
+      font-weight: 700; letter-spacing: -0.025em;
+      color: var(--navy); margin-bottom: 1rem;
+    }
+    .section-sub {
+      font-size: 1.05rem; color: var(--gray-500);
+      max-width: 580px; line-height: 1.75;
+    }
+
+    .problem-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem; margin-top: 3rem;
+    }
+    .problem-card {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-100);
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .problem-card-icon {
+      width: 40px; height: 40px; border-radius: 8px;
+      background: rgba(37,99,235,0.08);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; margin-bottom: 1rem;
+    }
+    .problem-card h3 {
+      font-size: 1rem; font-weight: 600; color: var(--navy); margin-bottom: 0.4rem;
+    }
+    .problem-card p { font-size: 0.875rem; color: var(--gray-500); line-height: 1.65; }
+
+    /* HOW IT WORKS */
+    .how-bg { background: var(--navy); }
+    .how-bg .section-eyebrow { color: var(--blue-light); }
+    .how-bg h2 { color: var(--white); }
+    .how-bg .section-sub { color: var(--gray-300); }
+
+    .steps {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0; margin-top: 3rem;
+    }
+    .step {
+      padding: 2rem 1.5rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: '→';
+      position: absolute; right: -0.5rem; top: 2rem;
+      color: var(--blue); font-size: 1.2rem;
+      display: none;
+    }
+    @media (min-width: 700px) {
+      .step:not(:last-child)::after { display: block; }
+    }
+    .step-num {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--blue-light);
+      margin-bottom: 0.75rem;
+    }
+    .step h3 { font-size: 1rem; font-weight: 600; color: var(--white); margin-bottom: 0.4rem; }
+    .step p { font-size: 0.85rem; color: var(--gray-500); line-height: 1.65; }
+
+    /* USP */
+    .usp-box {
+      margin-top: 3rem;
+      background: rgba(37,99,235,0.08);
+      border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 10px;
+      padding: 1.75rem 2rem;
+      display: flex; gap: 1.5rem; align-items: flex-start;
+    }
+    .usp-icon { font-size: 2rem; flex-shrink: 0; }
+    .usp-box h3 { font-size: 1rem; font-weight: 600; color: var(--white); margin-bottom: 0.35rem; }
+    .usp-box p { font-size: 0.875rem; color: var(--gray-300); line-height: 1.65; }
+
+    /* CTA */
+    .cta-section {
+      background: var(--blue);
+      padding: 80px 2rem;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: clamp(1.6rem, 3vw, 2.25rem);
+      font-weight: 700; color: var(--white);
+      letter-spacing: -0.025em; margin-bottom: 0.75rem;
+    }
+    .cta-section p { font-size: 1rem; color: rgba(255,255,255,0.75); margin-bottom: 2rem; }
+    .btn-white {
+      background: var(--white); color: var(--blue);
+      padding: 0.85rem 2.25rem; border-radius: 8px;
+      font-size: 1rem; font-weight: 700;
+      text-decoration: none;
+      display: inline-block;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-white:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+
+    /* FOOTER */
+    footer {
+      background: var(--navy);
+      padding: 2.5rem 2rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      text-align: center;
+    }
+    footer .footer-logo { font-size: 1rem; font-weight: 700; color: var(--white); margin-bottom: 0.5rem; }
+    footer .footer-logo span { color: var(--blue-light); }
+    footer p { font-size: 0.8rem; color: var(--gray-500); }
+    footer a { color: var(--gray-500); text-decoration: none; }
+    footer a:hover { color: var(--gray-300); }
+
+    @media (max-width: 600px) {
+      .hero { padding: 110px 1.25rem 80px; }
+      .section { padding: 60px 1.25rem; }
+      .usp-box { flex-direction: column; gap: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Clear<span>ifyer</span></div>
+  <a href="/app.html" class="nav-cta" target="_blank">Tool starten →</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-eyebrow">Blockchain-Sicherheit für den DACH-Raum</div>
+  <h1>Prüfen Sie jede Wallet-Adresse,<br /><em>bevor</em> Sie senden.</h1>
+  <p class="hero-sub">Clearifyer analysiert Blockchain-Adressen in Echtzeit auf Betrug, Sanktionen und kriminelle Aktivität — und liefert eine klare Empfehlung auf Deutsch.</p>
+  <div class="hero-actions">
+    <a href="/app.html" class="btn-primary" target="_blank">Tool jetzt testen</a>
+    <a href="#wie-es-funktioniert" class="btn-ghost">Wie es funktioniert</a>
+  </div>
+
+  <!-- DEMO WIDGET -->
+  <div class="demo-wrap">
+    <div class="demo-bar">
+      <div class="demo-dot" style="background:#EF4444"></div>
+      <div class="demo-dot" style="background:#F59E0B"></div>
+      <div class="demo-dot" style="background:#10B981"></div>
+      <span class="demo-title-bar">Clearifyer — Adressprüfung</span>
+    </div>
+    <div class="demo-body">
+      <div class="demo-label">Geprüfte Adresse</div>
+      <div class="demo-addr" id="demoAddr">0x742d35Cc6634C0532925a3b8D4C9C4d1d5c9b2e</div>
+      <div class="demo-result" id="demoResult">
+        <div class="demo-result-icon">✓</div>
+        <div class="demo-result-text">
+          <strong id="demoStatus">Keine Risiken erkannt</strong>
+          <span id="demoDesc">Adresse nicht auf Sanktionslisten. Kein Hinweis auf betrügerische Aktivität.</span>
+        </div>
+      </div>
+      <div class="demo-score">
+        <span class="score-label">Risiko-Score</span>
+        <div class="score-bar"><div class="score-fill" id="scoreBar"></div></div>
+        <span class="score-label" id="scoreVal">Niedrig</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST BAR -->
+<div class="trust-bar">
+  <p>Datenquellen & Standards</p>
+  <div class="trust-items">
+    <div class="trust-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      OFAC SDN-Liste
+    </div>
+    <div class="trust-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      EU-Finanzsanktionen
+    </div>
+    <div class="trust-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Chainabuse
+    </div>
+    <div class="trust-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      MiCAR-konform
+    </div>
+    <div class="trust-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      Multi-Chain (ETH, BTC, TRON)
+    </div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section class="section">
+  <div class="section-inner">
+    <div class="section-eyebrow">Das Problem</div>
+    <h2>Der Moment vor dem Senden ist ungeschützt.</h2>
+    <p class="section-sub">Banken und Kryptoplattformen sichern Konten und Verwahrung — aber der Moment, in dem ein Kunde eine externe Wallet-Adresse eingibt, bleibt blind. Das ist die häufigste Einstiegsstelle für Betrug.</p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="problem-card-icon">⚠️</div>
+        <h3>Adressbetrug wächst</h3>
+        <p>Investment-Scams über gefälschte Wallet-Adressen verursachen laut TRM Labs 2026 jährlich über 23 Milliarden USD Verlust weltweit.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-card-icon">⚖️</div>
+        <h3>Wachsende Haftungsrisiken</h3>
+        <p>Das OLG Dresden (2025) und MiCAR schaffen neue Sorgfaltspflichten für Banken und Plattformen beim Krypto-Transfer ihrer Kunden.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-card-icon">🔍</div>
+        <h3>Bestehende Tools greifen zu spät</h3>
+        <p>Forensische Blockchain-Analyse setzt nach der Transaktion an. Clearifyer prüft davor — in dem Moment, in dem noch gehandelt werden kann.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section how-bg" id="wie-es-funktioniert">
+  <div class="section-inner">
+    <div class="section-eyebrow">So funktioniert es</div>
+    <h2>Vier Schritte. Eine klare Antwort.</h2>
+    <p class="section-sub">Clearifyer begleitet Nutzer durch eine strukturierte Prüfung — mit einer entscheidenden Frage, die kein anderes Tool stellt.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">Schritt 1</div>
+        <h3>Adresse eingeben</h3>
+        <p>Der Nutzer gibt die Empfänger-Adresse ein — Ethereum, Bitcoin oder TRON.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">Schritt 2</div>
+        <h3>Kontext erfassen</h3>
+        <p>Clearifyer fragt: „Wie haben Sie diese Adresse erhalten?" — und wertet die Antwort in die Risikoanalyse ein.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">Schritt 3</div>
+        <h3>Echtzeit-Analyse</h3>
+        <p>Sanktionslisten, Betrugsreports und On-Chain-Daten werden aggregiert und bewertet.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">Schritt 4</div>
+        <h3>Deutsche Empfehlung</h3>
+        <p>Der Nutzer erhält eine klare, verständliche Handlungsempfehlung auf Deutsch.</p>
+      </div>
+    </div>
+
+    <div class="usp-box">
+      <div class="usp-icon">💡</div>
+      <div>
+        <h3>Der Unterschied: Kontext vor Verifikation</h3>
+        <p>Kein anderes Adress-Prüftool fragt nach dem Übertragungsweg der Adresse. Diese eine Frage verdoppelt die Erkennungsrate für Social-Engineering-Betrug — denn der Kontext ist oft riskanter als die Adresse selbst.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Testen Sie Clearifyer jetzt.</h2>
+  <p>Kostenlos. Keine Registrierung. Sofortige Ergebnisse.</p>
+  <a href="/app.html" class="btn-white" target="_blank">Tool öffnen →</a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Clear<span>ifyer</span></div>
+  <p style="margin-top:0.25rem; margin-bottom:1rem;">Ein Produkt der Alefy GmbH (i.Gr.) · Freiburg im Breisgau</p>
+  <p><a href="mailto:info@clearifyer.de">info@clearifyer.de</a> &nbsp;·&nbsp; <a href="#">Impressum</a> &nbsp;·&nbsp; <a href="#">Datenschutz</a></p>
+</footer>
+
+<script>
+  // Animate score bar on load
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      document.getElementById('scoreBar').style.width = '18%';
+    }, 600);
+  });
+
+  // Cycle through demo states
+  const states = [
+    {
+      addr: '0x742d35Cc6634C0532925a3b8D4C9C4d1d5c9b2e',
+      status: 'Keine Risiken erkannt',
+      desc: 'Adresse nicht auf Sanktionslisten. Kein Hinweis auf betrügerische Aktivität.',
+      color: '#10B981', bgColor: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)',
+      icon: '✓', score: '18%', scoreLabel: 'Niedrig'
+    },
+    {
+      addr: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+      status: 'Erhöhtes Risiko',
+      desc: 'Adresse in Verbindung mit gemeldeten Betrugsaktivitäten. Bitte vorsichtig vorgehen.',
+      color: '#F59E0B', bgColor: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.2)',
+      icon: '⚠', score: '62%', scoreLabel: 'Mittel'
+    },
+    {
+      addr: 'TKFLike4NDVF3Rk2hFcNH7n7gZJq6gKgV',
+      status: 'Hohes Risiko — Nicht senden',
+      desc: 'Adresse steht auf der EU-Sanktionsliste. Transaktion nicht empfohlen.',
+      color: '#EF4444', bgColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)',
+      icon: '✕', score: '91%', scoreLabel: 'Hoch'
+    }
+  ];
+
+  let idx = 0;
+  function cycleDemo() {
+    idx = (idx + 1) % states.length;
+    const s = states[idx];
+    document.getElementById('demoAddr').textContent = s.addr;
+    document.getElementById('demoStatus').textContent = s.status;
+    document.getElementById('demoStatus').style.color = s.color;
+    document.getElementById('demoDesc').textContent = s.desc;
+    document.getElementById('demoResult').style.background = s.bgColor;
+    document.getElementById('demoResult').style.borderColor = s.borderColor;
+    document.querySelector('.demo-result-icon').textContent = s.icon;
+    document.querySelector('.demo-result-icon').style.background = s.bgColor;
+    document.getElementById('scoreBar').style.background = s.color;
+    document.getElementById('scoreBar').style.width = '0%';
+    document.getElementById('scoreVal').textContent = s.scoreLabel;
+    setTimeout(() => {
+      document.getElementById('scoreBar').style.width = s.score;
+    }, 100);
+  }
+  setInterval(cycleDemo, 4000);
+</script>
+</body>
+</html>
