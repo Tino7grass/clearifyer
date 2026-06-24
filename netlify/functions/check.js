@@ -294,7 +294,7 @@ async function checkIknaio(address, network) {
   };
 
   try {
-    // Adress-Info und Tags parallel abrufen
+    // Adress-Info, Tags und Nachbar-Entitäten parallel abrufen
     const [addrRes, tagsRes] = await Promise.all([
       fetch(`${BASE}/${currency}/addresses/${address}`, { headers }),
       fetch(`${BASE}/${currency}/addresses/${address}/tags`, { headers })
@@ -310,7 +310,6 @@ async function checkIknaio(address, network) {
     let tags = [];
     if (tagsRes.ok) {
       const tagsData = await tagsRes.json();
-      // GraphSense gibt address_tags oder tags zurück (je nach Version)
       tags = tagsData.address_tags || tagsData.tags || [];
     }
 
@@ -319,7 +318,52 @@ async function checkIknaio(address, network) {
     const concepts = [...new Set(tags.map(t => t.concept || "").filter(Boolean))];
     const abuses = tags.filter(t => t.abuse).map(t => t.abuse);
 
-    // Risikobewertung anhand Labels und Abuse-Flags
+    // ── Neighbor-Check: Entitäts-Nachbarn auf Risiko-Labels prüfen ──
+    // Nur wenn Entität bekannt — sucht direkte Nachbar-Entitäten mit Abuse-Tags
+    let neighborRisk = "neutral";
+    let neighborFindings = [];
+
+    const entityId = addrData?.entity?.entity;
+    if (entityId) {
+      try {
+        // Nachbar-Entitäten mit Abuse-Filter abrufen (direction: both, max 20)
+        const neighborRes = await fetch(
+          `${BASE}/${currency}/entities/${entityId}/neighbors?direction=both&include_labels=true&pagesize=20`,
+          { headers }
+        );
+        if (neighborRes.ok) {
+          const neighborData = await neighborRes.json();
+          const neighbors = neighborData.neighbors || [];
+
+          const dangerousNeighborKeywords = ["mixer", "tumbler", "darknet", "scam", "ransomware", "hack", "sanctioned", "terrorism", "illicit"];
+
+          for (const neighbor of neighbors) {
+            const nLabels = (neighbor.labels || []).map(l => (l.label || l || "").toLowerCase());
+            const nAbuses = neighbor.abuse || [];
+            const nId     = neighbor.entity?.entity || neighbor.entity;
+
+            const isDangerous = nAbuses.length > 0 ||
+              nLabels.some(l => dangerousNeighborKeywords.some(d => l.includes(d)));
+
+            if (isDangerous) {
+              neighborFindings.push({
+                entityId: nId,
+                labels: nLabels.filter(Boolean),
+                abuses: nAbuses,
+              });
+            }
+          }
+
+          if (neighborFindings.length > 0) {
+            neighborRisk = "high";
+          }
+        }
+      } catch (e) {
+        console.warn("Iknaio Neighbor-Check Fehler:", e.message);
+      }
+    }
+
+    // ── Risikobewertung (direkte Labels + Nachbarn) ──────────────────
     const dangerousKeywords = ["mixer", "tumbler", "darknet", "scam", "ransomware", "hack", "sanctioned", "terrorism"];
     const safeKeywords      = ["exchange", "defi", "cex", "wallet_provider", "mining_pool"];
 
@@ -332,6 +376,13 @@ async function checkIknaio(address, network) {
     } else if (labels.some(l => dangerousKeywords.some(d => l.toLowerCase().includes(d)))) {
       risk   = "high";
       detail = `🚨 Iknaio: Risiko-Labels gefunden: ${labels.join(", ")}.`;
+    } else if (neighborFindings.length > 0) {
+      risk   = "high";
+      const count = neighborFindings.length;
+      const sample = neighborFindings.slice(0, 3).map(n =>
+        n.abuses.length > 0 ? n.abuses[0] : n.labels[0] || "unbekannt"
+      ).join(", ");
+      detail = `🚨 Iknaio: ${count} auffällige Nachbar-Entität(en) im Transaktionsgraph (${sample}).`;
     } else if (labels.some(l => safeKeywords.some(s => l.toLowerCase().includes(s)))) {
       risk   = "low";
       detail = `✅ Iknaio: Bekannte vertrauenswürdige Entität. Labels: ${labels.join(", ")}.`;
@@ -343,9 +394,9 @@ async function checkIknaio(address, network) {
       detail = "Iknaio: Keine Attribution gefunden (neue oder unbekannte Adresse).";
     }
 
-    // Entitäts-Info (falls vorhanden)
+    // Entitäts-Info
     const entityInfo = addrData?.entity
-      ? { id: addrData.entity.entity, noAddresses: addrData.entity.no_addresses }
+      ? { id: entityId, noAddresses: addrData.entity.no_addresses }
       : null;
 
     return {
@@ -355,6 +406,7 @@ async function checkIknaio(address, network) {
       labels,
       concepts,
       abuses,
+      neighborFindings,        // auffällige Nachbarn (für Audit-Log & Claude)
       entity: entityInfo,
       totalTxs: addrData?.no_txs ?? null,
       firstTx: addrData?.first_tx?.timestamp
@@ -432,6 +484,7 @@ GRAPHSENSE / IKNAIO ATTRIBUTION:
 - Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}
 - Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}
 - Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}
+- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}
 
 WICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.
 Falls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.
@@ -527,6 +580,7 @@ exports.handler = async (event) => {
       sanction_source: sanctionSource,
       iknaio_risk: iknaio.risk,
       iknaio_labels: iknaio.labels || [],
+      iknaio_neighbors_flagged: (iknaio.neighborFindings || []).length,
       sources_checked: ["OFAC", "EU", "Chainabuse", "MistTrack", "Etherscan", "Iknaio"],
       duration_ms: Date.now() - start,
     });
