@@ -70,17 +70,65 @@ async function resolveENS(input) {
 // 3. OFAC SDN LIST
 // ============================================================
 
+// Bekannte sanktionierte Adressen die im OFAC-CSV nicht als 0x-String stehen
+// Quelle: OFAC SDN-Einträge, ofac.treasury.gov (manuell verifiziert)
+const OFAC_HARDLIST = new Set([
+  // Tornado Cash (OFAC 08/2022, SDN-Programm CYBER2)
+  "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b",
+  "0x722122df12d4e14e13ac3b6895a86e84145b6967",
+  "0xdd4c48c0b24039969fc16d1cdf626eab821d3384",
+  "0xd96f2b1c14db8458374d9aca76e26c3950113949",
+  "0x4736dcf1b7a3d580672cce6e7c65cd5cc9cfba9d",
+  "0xd4b88df4d29f5cedd6857912842cff3b20c8cfa3",
+  "0x910cbd523d972eb0a6f4cae4618ad62622b39dbf",
+  "0xa160cdab225685da1d56aa342ad8841c3b53f291",
+  "0xfd8610d20aa15b7b2e3be39b396a1bc3516c7144",
+  "0xf60dd140cff0706bae9cd734ac3ae76ad9ebc32a",
+  "0x22aaa7720ddd5388a3c0a3333430953c68f1849b",
+  "0xba214c1c1928a32bffe790263e38b4af9bfcd659",
+  "0xb1c8094b234dce6e03f10a5b673c1d8c69739a00",
+  "0x527653ea119f3e6a1f5bd18fbf4714081d7b31ce",
+  "0x58e8dcc13be9780fc42e8723d8ead4cf46943df2",
+  "0xd691f27f38b395864ea86cfc7253969b409c362d",
+  "0xaf4c0b70b2ea9fb7487c7cbb37ada259579fe040",
+  "0xa5c2254e4253490c54cef0a4347fddb8f75a4998",
+  "0x1356c899d8c9467c7f71c195612f8a395abf2f0a",
+  "0x169ad27a470d064dede56a2d3ff727986b15d52b",
+  "0x0836222f2b2b5a6430604607e9ae5b26c78a3bfd",
+  "0xf67721a2d8f736e75a49fdc940616ad24db81c35",
+  "0x9ad122c22b14202b4490edaf288fdb3c7cb3ff5e",
+  "0x905b63fff465b9ffbf41dea908ceb12478ec7601",
+  "0x07687e702b410fa43f4cb4af7fa097918ffd2730",
+  "0x94a1b5cdb22c43faab4abeb5c74999895464ddaf",
+  "0xb541fc07bc7619fd4062a54d96268525cbc6ffef",
+  "0xce0042b868300000d44a59004da54a005ffdcf9f",
+  "0x23773e65ed146a459667ad917a0f3f3bb6b3e7df",
+  "0x77777feddddffc19ff86db637967013e020f3b0a",
+  "0x3efa30704d2b8bbac821307230376556cf8cc39e",
+  // Lazarus Group / DPRK (OFAC)
+  "0x098b716b8aaf21512996dc57eb0615e2383e2f96",
+  "0xa0e1c89ef1a489c9c7de96311ed5ce5d32c20e4b",
+  "0x3ad9db589d201a710811928d3cbfe2eba228502e",
+].map(a => a.toLowerCase()));
+
 async function loadOFAC() {
   if (_ofacAddresses && Date.now() - _ofacTs < CACHE_TTL) return _ofacAddresses;
   try {
     const res = await fetch("https://www.treasury.gov/ofac/downloads/sdn.csv");
-    if (!res.ok) return new Set();
+    if (!res.ok) {
+      _ofacAddresses = new Set(OFAC_HARDLIST);
+      _ofacTs = Date.now();
+      return _ofacAddresses;
+    }
     const text = await res.text();
-    const matches = text.match(/0x[a-fA-F0-9]{40}/g) || [];
-    _ofacAddresses = new Set(matches.map(a => a.toLowerCase()));
+    const matches = text.match(/0x[a-fA-F0-9]{40}/gi) || [];
+    const fromCsv = new Set(matches.map(a => a.toLowerCase()));
+    _ofacAddresses = new Set([...fromCsv, ...OFAC_HARDLIST]);
     _ofacTs = Date.now();
     return _ofacAddresses;
-  } catch { return new Set(); }
+  } catch {
+    return new Set(OFAC_HARDLIST);
+  }
 }
 
 async function checkOFAC(address) {
