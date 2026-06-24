@@ -647,7 +647,25 @@ exports.handler = async (event) => {
         ofac,
         euSanctions,
         misttrack,
-        iknaio,
+        iknaio: {
+          // Nur Labels und Risikobewertung — keine Rohdaten (Iknaio-Nutzungsbedingungen)
+          available: iknaio.available,
+          risk: iknaio.risk,
+          detail: iknaio.detail,
+          labels: iknaio.labels,
+          concepts: iknaio.concepts,
+          abuses: iknaio.abuses,
+          neighborFindings: (iknaio.neighborFindings || []).map(n => ({
+            labels: n.labels,
+            abuses: n.abuses,
+            // entityId wird nicht weitergegeben
+          })),
+          // Entitäts-Metadaten: nur Clustergröße, keine IDs
+          entitySize: iknaio.entity?.noAddresses ?? null,
+          totalTxs: iknaio.totalTxs,
+          firstTx: iknaio.firstTx,
+          lastTx: iknaio.lastTx,
+        },
         sanctioned: isSanctioned,
         sanctionSource,
         checkedAt: new Date().toLocaleDateString("de-DE"),
