@@ -1,7 +1,6 @@
 // netlify/functions/check.js
-// Clearifyer — API Aggregator v2.0
-// Neu: OFAC, EU-Sanktionen, ENS-Auflösung, Velocity Check,
-//      Contract Detection, Multi-Chain, MistTrack, Audit-Log
+// Clearifyer — API Aggregator v2.1
+// Neu: Iknaio/GraphSense Integration
 
 const { getStore } = require("@netlify/blobs");
 
@@ -9,6 +8,7 @@ const ETHERSCAN_KEY  = process.env.ETHERSCAN_API_KEY  || "";
 const CHAINABUSE_KEY = process.env.CHAINABUSE_API_KEY || "";
 const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY  || "";
 const MISTTRACK_KEY  = process.env.MISTTRACK_API_KEY  || "";
+const IKNAIO_KEY     = process.env.IKNAIO_API_KEY     || "";
 
 // ── Cache für Sanktionslisten (1h TTL) ──────────────────────
 let _ofacAddresses = null, _ofacTs = 0;
@@ -54,7 +54,6 @@ async function resolveENS(input) {
   }
 
   try {
-    // Etherscan ENS-Lookup
     const res = await fetch(
       `https://api.etherscan.io/api?module=account&action=getaddress&ens=${trimmed}&apikey=${ETHERSCAN_KEY}`
     );
@@ -128,7 +127,7 @@ async function checkEUSanctions(address) {
 }
 
 // ============================================================
-// 5. ETHERSCAN (bestehend, erweitert um Velocity + Contract)
+// 5. ETHERSCAN
 // ============================================================
 
 async function fetchEtherscan(addr, network) {
@@ -138,7 +137,6 @@ async function fetchEtherscan(addr, network) {
 
   try {
     const base = `https://api.etherscan.io/v2/api?chainid=${chainId}&apikey=${ETHERSCAN_KEY}`;
-    // Transaktionen: asc für erste TX, desc für Velocity
     const [balRes, txAscRes, txDescRes, codeRes] = await Promise.all([
       fetch(`${base}&module=account&action=balance&address=${addr}&tag=latest`),
       fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=1&sort=asc`),
@@ -146,41 +144,35 @@ async function fetchEtherscan(addr, network) {
       fetch(`${base}&module=proxy&action=eth_getCode&address=${addr}&tag=latest`)
     ]);
 
-    const balData   = await balRes.json();
-    const txAscData = await txAscRes.json();
+    const balData    = await balRes.json();
+    const txAscData  = await txAscRes.json();
     const txDescData = await txDescRes.json();
-    const codeData  = await codeRes.json();
+    const codeData   = await codeRes.json();
 
-    // Balance
     const balanceEth = balData.status === "1"
       ? (parseFloat(balData.result) / 1e18).toFixed(6) : null;
 
-    // Transaktionen
     let txCount = 0, firstTxDate = null, lastTxDate = null, receivesOnly = false, velocity24h = 0;
     const now = Math.floor(Date.now() / 1000);
 
-    // Erste TX (asc)
     if (txAscData.status === "1" && Array.isArray(txAscData.result) && txAscData.result.length > 0) {
       firstTxDate = new Date(parseInt(txAscData.result[0].timeStamp) * 1000).toLocaleDateString("de-DE");
     }
 
-    // Neueste TXs (desc) für Velocity + letzte TX
     if (txDescData.status === "1" && Array.isArray(txDescData.result) && txDescData.result.length > 0) {
       const txs = txDescData.result;
-      txCount   = txs.length;
+      txCount    = txs.length;
       lastTxDate = new Date(parseInt(txs[0].timeStamp) * 1000).toLocaleDateString("de-DE");
       receivesOnly = txs.every(tx => tx.to?.toLowerCase() === addr.toLowerCase());
       velocity24h  = txs.filter(tx => parseInt(tx.timeStamp) > now - 86400).length;
     }
 
-    // Velocity Risiko
     let velocityRisk = "low";
     let velocityDetail = `${velocity24h} Transaktion(en) in den letzten 24h — unauffällig.`;
     if (velocity24h > 20)     { velocityRisk = "high";   velocityDetail = `🚨 ${velocity24h} Transaktionen in 24h — möglicher Mixer/Tumbler.`; }
     else if (velocity24h > 5) { velocityRisk = "medium"; velocityDetail = `⚠️ ${velocity24h} Transaktionen in 24h — erhöhte Aktivität.`; }
 
-    // Contract Detection — nur wenn Bytecode eindeutig vorhanden (mind. 100 Zeichen)
-    const bytecode = codeData.result;
+    const bytecode   = codeData.result;
     const isContract = typeof bytecode === "string" && bytecode !== "0x" && bytecode !== "" && bytecode.length > 100;
     let contractRisk = "neutral";
     let contractDetail = "✅ Normale Wallet-Adresse (kein Smart Contract).";
@@ -209,7 +201,7 @@ async function fetchEtherscan(addr, network) {
 }
 
 // ============================================================
-// 6. CHAINABUSE (bestehend, unverändert)
+// 6. CHAINABUSE
 // ============================================================
 
 async function fetchChainabuse(addr) {
@@ -283,7 +275,104 @@ async function checkMistTrack(address, network) {
 }
 
 // ============================================================
-// 8. AUDIT-LOG (Netlify Blobs)
+// 8. IKNAIO / GRAPHSENSE  ← NEU
+// ============================================================
+
+async function checkIknaio(address, network) {
+  if (!IKNAIO_KEY) {
+    return { available: false, detail: "Iknaio nicht konfiguriert.", risk: "unknown" };
+  }
+
+  // Chain-Mapping: Iknaio nutzt Kürzel wie "eth", "btc", "trx"
+  const chainMap = { eth: "eth", btc: "btc", trx: "trx", bnb: "eth", matic: "eth" };
+  const currency = chainMap[network] || "eth";
+
+  const BASE = "https://api.ikna.io";
+  const headers = {
+    "Authorization": IKNAIO_KEY,
+    "Accept": "application/json"
+  };
+
+  try {
+    // Adress-Info und Tags parallel abrufen
+    const [addrRes, tagsRes] = await Promise.all([
+      fetch(`${BASE}/${currency}/addresses/${address}`, { headers }),
+      fetch(`${BASE}/${currency}/addresses/${address}/tags`, { headers })
+    ]);
+
+    // Adress-Info auswerten
+    let addrData = null;
+    if (addrRes.ok) {
+      addrData = await addrRes.json();
+    }
+
+    // Tags auswerten
+    let tags = [];
+    if (tagsRes.ok) {
+      const tagsData = await tagsRes.json();
+      // GraphSense gibt address_tags oder tags zurück (je nach Version)
+      tags = tagsData.address_tags || tagsData.tags || [];
+    }
+
+    // Tag-Labels extrahieren
+    const labels = tags.map(t => t.label || t.category || "").filter(Boolean);
+    const concepts = [...new Set(tags.map(t => t.concept || "").filter(Boolean))];
+    const abuses = tags.filter(t => t.abuse).map(t => t.abuse);
+
+    // Risikobewertung anhand Labels und Abuse-Flags
+    const dangerousKeywords = ["mixer", "tumbler", "darknet", "scam", "ransomware", "hack", "sanctioned", "terrorism"];
+    const safeKeywords      = ["exchange", "defi", "cex", "wallet_provider", "mining_pool"];
+
+    let risk = "neutral";
+    let detail = "";
+
+    if (abuses.length > 0) {
+      risk   = "high";
+      detail = `🚨 Iknaio: Missbrauch gemeldet — ${abuses.join(", ")}. Labels: ${labels.join(", ") || "keine"}.`;
+    } else if (labels.some(l => dangerousKeywords.some(d => l.toLowerCase().includes(d)))) {
+      risk   = "high";
+      detail = `🚨 Iknaio: Risiko-Labels gefunden: ${labels.join(", ")}.`;
+    } else if (labels.some(l => safeKeywords.some(s => l.toLowerCase().includes(s)))) {
+      risk   = "low";
+      detail = `✅ Iknaio: Bekannte vertrauenswürdige Entität. Labels: ${labels.join(", ")}.`;
+    } else if (labels.length > 0) {
+      risk   = "low";
+      detail = `Iknaio: Adresse bekannt. Labels: ${labels.join(", ")}.`;
+    } else {
+      risk   = "neutral";
+      detail = "Iknaio: Keine Attribution gefunden (neue oder unbekannte Adresse).";
+    }
+
+    // Entitäts-Info (falls vorhanden)
+    const entityInfo = addrData?.entity
+      ? { id: addrData.entity.entity, noAddresses: addrData.entity.no_addresses }
+      : null;
+
+    return {
+      available: true,
+      risk,
+      detail,
+      labels,
+      concepts,
+      abuses,
+      entity: entityInfo,
+      totalTxs: addrData?.no_txs ?? null,
+      firstTx: addrData?.first_tx?.timestamp
+        ? new Date(addrData.first_tx.timestamp * 1000).toLocaleDateString("de-DE")
+        : null,
+      lastTx: addrData?.last_tx?.timestamp
+        ? new Date(addrData.last_tx.timestamp * 1000).toLocaleDateString("de-DE")
+        : null,
+    };
+
+  } catch (e) {
+    console.error("Iknaio Fehler:", e.message);
+    return { available: false, risk: "unknown", detail: "Iknaio vorübergehend nicht verfügbar." };
+  }
+}
+
+// ============================================================
+// 9. AUDIT-LOG (Netlify Blobs)
 // ============================================================
 
 async function writeAuditLog(entry) {
@@ -301,10 +390,10 @@ async function writeAuditLog(entry) {
 }
 
 // ============================================================
-// 9. CLAUDE KI-ANALYSE (erweitert)
+// 10. CLAUDE KI-ANALYSE (erweitert um Iknaio)
 // ============================================================
 
-async function analyzeWithClaude({ addr, network, context, amount, onChain, chainabuse, formatValid, ofac, euSanctions, misttrack }) {
+async function analyzeWithClaude({ addr, network, context, amount, onChain, chainabuse, formatValid, ofac, euSanctions, misttrack, iknaio }) {
   if (!ANTHROPIC_KEY) throw new Error("Kein Anthropic API-Key");
 
   const networkNames = {
@@ -336,7 +425,16 @@ AML-DATENBANKEN:
 - Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}
 - MistTrack: ${misttrack?.detail ?? "nicht geprüft"}
 
+GRAPHSENSE / IKNAIO ATTRIBUTION:
+- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}
+- Bewertung: ${iknaio?.detail ?? "n/a"}
+- Labels: ${iknaio?.labels?.join(", ") || "keine"}
+- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}
+- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}
+- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}
+
 WICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.
+Falls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.
 
 Antworte exakt in diesem JSON-Format:
 {"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
@@ -367,7 +465,7 @@ Antworte exakt in diesem JSON-Format:
 }
 
 // ============================================================
-// 10. HAUPTHANDLER
+// 11. HAUPTHANDLER
 // ============================================================
 
 exports.handler = async (event) => {
@@ -396,13 +494,14 @@ exports.handler = async (event) => {
     // ── Adressformat validieren ──────────────────────────────
     const formatCheck = validateAddress(address, network);
 
-    // ── Alle Checks parallel ─────────────────────────────────
-    const [onChain, chainabuse, ofac, euSanctions, misttrack] = await Promise.all([
+    // ── Alle Checks parallel (inkl. Iknaio) ─────────────────
+    const [onChain, chainabuse, ofac, euSanctions, misttrack, iknaio] = await Promise.all([
       fetchEtherscan(address, network),
       fetchChainabuse(address),
       checkOFAC(address),
       checkEUSanctions(address),
       checkMistTrack(address, network),
+      checkIknaio(address, network),
     ]);
 
     // ── K.O.-Kriterium: Sanktionslisten ─────────────────────
@@ -413,7 +512,7 @@ exports.handler = async (event) => {
     const aiResult = await analyzeWithClaude({
       addr: address, network, context, amount,
       onChain, chainabuse, formatValid: formatCheck.valid,
-      ofac, euSanctions, misttrack
+      ofac, euSanctions, misttrack, iknaio
     });
 
     // ── Audit-Log schreiben ──────────────────────────────────
@@ -426,7 +525,9 @@ exports.handler = async (event) => {
       risk_level: aiResult.riskLevel,
       sanctioned: isSanctioned,
       sanction_source: sanctionSource,
-      sources_checked: ["OFAC", "EU", "Chainabuse", "MistTrack", "Etherscan"],
+      iknaio_risk: iknaio.risk,
+      iknaio_labels: iknaio.labels || [],
+      sources_checked: ["OFAC", "EU", "Chainabuse", "MistTrack", "Etherscan", "Iknaio"],
       duration_ms: Date.now() - start,
     });
 
@@ -444,6 +545,7 @@ exports.handler = async (event) => {
         ofac,
         euSanctions,
         misttrack,
+        iknaio,
         sanctioned: isSanctioned,
         sanctionSource,
         checkedAt: new Date().toLocaleDateString("de-DE"),
