@@ -383,7 +383,20 @@ function renderResult(r) {
     if (mt.labels && mt.labels.length) misttrackHtml += '<div class="data-cell"><div class="dc-label">Labels</div><div class="dc-value" style="font-size:0.7rem">' + mt.labels.slice(0,2).join(', ') + '</div></div>';
     misttrackHtml += '</div>';
   }
-
+// VASP Identification
+var vaspHtml = '';
+if (r.vasp) {
+  var micarBadge = r.vasp.micar_licensed 
+    ? '<span style="color:var(--green);font-size:0.75rem">✓ MiCAR-lizenziert</span>'
+    : '<span style="color:var(--amber);font-size:0.75rem">⚠ Keine MiCAR-Lizenz</span>';
+  vaspHtml = '<div class="card-label" style="margin-top:0.5rem">🏦 VASP Erkannt</div>' +
+    '<div class="data-grid">' +
+    '<div class="data-cell"><div class="dc-label">Name</div><div class="dc-value" style="color:var(--amber)">' + r.vasp.name + '</div></div>' +
+    '<div class="data-cell"><div class="dc-label">Jurisdiktion</div><div class="dc-value" style="font-size:0.75rem">' + r.vasp.jurisdiction + '</div></div>' +
+    '<div class="data-cell"><div class="dc-label">Status</div><div class="dc-value">' + micarBadge + '</div></div>' +
+    '<div class="data-cell"><div class="dc-label">Travel Rule</div><div class="dc-value" style="color:var(--amber)">⚠ Gilt für diesen Transfer</div></div>' +
+    '</div></div>';
+}
   var displayAddr = r.ensName ? r.ensName + ' (' + r.addr + ')' : r.addr;
   var explorerLinks = buildExplorerLinks(r.addr, r.network);
 
@@ -393,7 +406,7 @@ function renderResult(r) {
     '<div class="score-row"><span>Risiko-Score</span><span class="score-val" style="color:' + color + '">' + score + '/100 · ' + r.riskLevel + '</span></div>' +
     '<div class="score-track"><div class="score-fill" style="width:' + score + '%;background:' + color + '"></div></div>' +
     '<div class="verdict ' + vClass + '"><span class="verdict-icon">' + icon + '</span><span>' + r.summary + '</span></div>' +
-    sanctionDataHtml + onChainHtml + chainabuseHtml + misttrackHtml +
+    sanctionDataHtml + onChainHtml + chainabuseHtml + misttrackHtml + vaspHtml +
     '<div class="card-label" style="margin-top:0.5rem">Befunde</div>' +
     '<ul class="findings">' + findingsHtml + '</ul>' +
     '<div class="reco"><strong>Empfehlung:</strong> ' + r.recommendation + '</div>' +
