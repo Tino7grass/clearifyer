@@ -3,7 +3,25 @@
 // Neu: Iknaio/GraphSense Integration
 
 const { getStore } = require("@netlify/blobs");
+const vaspList = require('./vasp-list.json');
 
+function lookupVASP(address) {
+  if (!address) return null;
+  const norm = address.toLowerCase().trim();
+  for (const vasp of vaspList.vasps) {
+    for (const addrs of Object.values(vasp.addresses)) {
+      if (addrs.some(a => a.toLowerCase() === norm)) {
+        return {
+          name: vasp.name,
+          jurisdiction: vasp.jurisdiction,
+          micar_licensed: vasp.micar_licensed,
+          travel_rule_applies: true
+        };
+      }
+    }
+  }
+  return null;
+}
 const ETHERSCAN_KEY  = process.env.ETHERSCAN_API_KEY  || "";
 const CHAINABUSE_KEY = process.env.CHAINABUSE_API_KEY || "";
 const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY  || "";
@@ -669,7 +687,8 @@ exports.handler = async (event) => {
         sanctioned: isSanctioned,
         sanctionSource,
         checkedAt: new Date().toLocaleDateString("de-DE"),
-        ...aiResult
+        ...aiResult,
+        vasp: lookupVASP(address),
       })
     };
 
