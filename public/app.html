@@ -386,7 +386,20 @@ function renderResult(r) {
 // VASP Identification
 var vaspHtml = '';
 if (r.vasp) {
-  var micarBadge = r.vasp.micar_licensed 
+  var amountVal = document.getElementById('amount').value.trim();
+  var amountNum = parseFloat(amountVal);
+  var travelRuleText, travelRuleColor;
+  if (!amountVal || isNaN(amountNum)) {
+    travelRuleText = '⚠ Betrag unbekannt – Travel Rule möglicherweise anwendbar';
+    travelRuleColor = 'var(--amber)';
+  } else if (amountNum >= 1000) {
+    travelRuleText = '⚠ Travel Rule gilt vollständig (über 1.000€)';
+    travelRuleColor = 'var(--red)';
+  } else {
+    travelRuleText = '✓ Vereinfachte Travel Rule (unter 1.000€)';
+    travelRuleColor = 'var(--amber)';
+  }
+  var micarBadge = r.vasp.micar_licensed
     ? '<span style="color:var(--green);font-size:0.75rem">✓ MiCAR-lizenziert</span>'
     : '<span style="color:var(--amber);font-size:0.75rem">⚠ Keine MiCAR-Lizenz</span>';
   vaspHtml = '<div class="card-label" style="margin-top:0.5rem">🏦 VASP Erkannt</div>' +
@@ -394,7 +407,7 @@ if (r.vasp) {
     '<div class="data-cell"><div class="dc-label">Name</div><div class="dc-value" style="color:var(--amber)">' + r.vasp.name + '</div></div>' +
     '<div class="data-cell"><div class="dc-label">Jurisdiktion</div><div class="dc-value" style="font-size:0.75rem">' + r.vasp.jurisdiction + '</div></div>' +
     '<div class="data-cell"><div class="dc-label">Status</div><div class="dc-value">' + micarBadge + '</div></div>' +
-    '<div class="data-cell"><div class="dc-label">Travel Rule</div><div class="dc-value" style="color:var(--amber)">⚠ Gilt für diesen Transfer</div></div>' +
+    '<div class="data-cell"><div class="dc-label">Travel Rule</div><div class="dc-value" style="color:' + travelRuleColor + ';font-size:0.75rem">' + travelRuleText + '</div></div>' +
     '</div></div>';
 }
   var displayAddr = r.ensName ? r.ensName + ' (' + r.addr + ')' : r.addr;
