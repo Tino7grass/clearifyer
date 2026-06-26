@@ -307,7 +307,7 @@ async function checkMistTrack(address, network) {
 
   try {
     const [riskRes, counterpartyRes] = await Promise.all([
-      fetch(`${base}/v2/risk_score?${params}`),
+      fetch(`${base}/v3/risk_score?${params}`),
       fetch(`${base}/v1/address_counterparty?${params}`)
     ]);
 
@@ -315,9 +315,13 @@ async function checkMistTrack(address, network) {
     const counterpartyData = await counterpartyRes.json();
 
     // ── Risk Score ───────────────────────────────────────────
-    const riskScore  = riskData?.data?.risk_score ?? null;
-    const riskDetail = riskData?.data?.risk_detail ?? [];
-    const labels     = Array.isArray(riskDetail) ? riskDetail : [];
+   const riskScore  = riskData?.data?.score ?? null;
+const detailList = riskData?.data?.detail_list ?? [];       // ["Involved Illicit Activity", ...]
+const riskDetail = riskData?.data?.risk_detail ?? [];       // [{entity, risk_type, percent, ...}]
+const labels     = [
+  ...detailList,
+  ...riskDetail.map(r => `${r.entity} (${r.risk_type})`).filter(Boolean)
+];
 
     let risk = "neutral";
     let scoreDetail = "";
