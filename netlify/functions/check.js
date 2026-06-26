@@ -287,8 +287,14 @@ async function fetchChainabuse(addr) {
 }
 
 // ============================================================
-// 7. MISTTRACK AML
+// 7. MISTTRACK AML (Developer Plan — GET API)
 // ============================================================
+
+const MISTTRACK_RISKY_COUNTERPARTIES = [
+  "tornado", "mixer", "tumbler", "darknet", "dark web",
+  "ransomware", "lazarus", "hack", "stolen", "coinjoin",
+  "wasabi", "chipmixer", "helix", "sanctioned", "illicit"
+];
 
 async function checkMistTrack(address, network) {
   if (!MISTTRACK_KEY) return { available: false, detail: "MistTrack nicht konfiguriert.", risk: "unknown" };
@@ -296,50 +302,82 @@ async function checkMistTrack(address, network) {
   const chainMap = { eth: "ETH", btc: "BTC", trx: "TRX", bnb: "BNB", matic: "MATIC" };
   const coin = chainMap[network] || "ETH";
 
+  const base = `https://openapi.misttrack.io`;
+  const params = `coin=${coin}&address=${encodeURIComponent(address)}&api_key=${MISTTRACK_KEY}`;
+
   try {
-    const [labelRes, riskRes] = await Promise.all([
-      fetch("https://openapi.misttrack.io/v1/address_labels", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "API-Key": MISTTRACK_KEY },
-        body: JSON.stringify({ address, coin })
-      }),
-      fetch("https://openapi.misttrack.io/v1/risk_score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "API-Key": MISTTRACK_KEY },
-        body: JSON.stringify({ address, coin })
-      })
+    const [riskRes, counterpartyRes] = await Promise.all([
+      fetch(`${base}/v2/risk_score?${params}`),
+      fetch(`${base}/v1/address_counterparty?${params}`)
     ]);
 
-    const labelData = await labelRes.json();
-    const riskData  = await riskRes.json();
+    const riskData         = await riskRes.json();
+    const counterpartyData = await counterpartyRes.json();
 
-    const labels    = labelData.data?.label_list || [];
-    const riskScore = riskData.data?.score ?? null;
+    // ── Risk Score ───────────────────────────────────────────
+    const riskScore  = riskData?.data?.risk_score ?? null;
+    const riskDetail = riskData?.data?.risk_detail ?? [];
+    const labels     = Array.isArray(riskDetail) ? riskDetail : [];
 
-    const dangerous = ["mixer","tumbler","darknet","scam","phishing","ransomware","hack"];
-    const safe      = ["exchange","defi","binance","coinbase","kraken"];
+    let risk = "neutral";
+    let scoreDetail = "";
 
-    let risk = "low", detail = "";
-    if (labels.some(l => dangerous.some(d => l.toLowerCase().includes(d))) || (riskScore !== null && riskScore >= 70)) {
-      risk   = "high";
-      detail = `🚨 MistTrack: Hohes Risiko (Score: ${riskScore ?? "N/A"}). Labels: ${labels.join(", ") || "keine"}.`;
-    } else if (riskScore !== null && riskScore >= 40) {
-      risk   = "medium";
-      detail = `⚠️ MistTrack: Erhöhtes Risiko (Score: ${riskScore}). Labels: ${labels.join(", ") || "keine"}.`;
-    } else if (labels.some(l => safe.some(s => l.toLowerCase().includes(s)))) {
-      risk   = "low";
-      detail = `✅ MistTrack: Bekannte vertrauenswürdige Entität. Labels: ${labels.join(", ")}.`;
-    } else {
-      risk   = "neutral";
-      detail = `MistTrack: Keine auffälligen Labels (Score: ${riskScore ?? "N/A"}).`;
+    if (riskScore !== null) {
+      if (riskScore >= 70) {
+        risk        = "high";
+        scoreDetail = `🚨 MistTrack Score: ${riskScore}/100 (HOCH). Labels: ${labels.join(", ") || "–"}.`;
+      } else if (riskScore >= 40) {
+        risk        = "medium";
+        scoreDetail = `⚠️ MistTrack Score: ${riskScore}/100 (MITTEL). Labels: ${labels.join(", ") || "–"}.`;
+      } else {
+        risk        = "low";
+        scoreDetail = `✅ MistTrack Score: ${riskScore}/100 (GERING). Labels: ${labels.join(", ") || "–"}.`;
+      }
     }
 
-    return { available: true, riskScore, labels, risk, detail };
+    // ── Counterparty ─────────────────────────────────────────
+    const counterpartyList    = counterpartyData?.address_counterparty_list ?? [];
+    const flaggedCounterparties = [];
+    let   counterpartyBoost   = 0;
+    let   counterpartyDetail  = "";
+
+    if (counterpartyList.length > 0) {
+      const top5 = counterpartyList.slice(0, 5);
+      counterpartyDetail = "Gegenparteien: " + top5
+        .map(c => `${c.name} (${c.percent?.toFixed(1)}%)`)
+        .join(", ");
+
+      for (const cp of counterpartyList) {
+        const nameLower = (cp.name || "").toLowerCase();
+        if (MISTTRACK_RISKY_COUNTERPARTIES.some(t => nameLower.includes(t))) {
+          flaggedCounterparties.push(`${cp.name} (${cp.percent?.toFixed(1)}%)`);
+          counterpartyBoost += Math.min(cp.percent / 2, 25);
+        }
+      }
+
+      if (flaggedCounterparties.length > 0) {
+        if (risk === "low" || risk === "neutral") risk = "high";
+        counterpartyDetail += ` ⚠️ Risiko-Gegenparteien: ${flaggedCounterparties.join(", ")}`;
+      }
+    }
+
+    const detail = [scoreDetail, counterpartyDetail].filter(Boolean).join(" | ");
+
+    return {
+      available: true,
+      riskScore,
+      labels,
+      counterpartyList,
+      flaggedCounterparties,
+      counterpartyBoost: Math.round(counterpartyBoost),
+      risk,
+      detail
+    };
+
   } catch (e) {
     return { available: false, risk: "unknown", detail: "MistTrack vorübergehend nicht verfügbar." };
   }
 }
-
 // ============================================================
 // 8. IKNAIO / GRAPHSENSE  ← NEU
 // ============================================================
@@ -541,7 +579,9 @@ SANKTIONEN:
 
 AML-DATENBANKEN:
 - Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}
-- MistTrack: ${misttrack?.detail ?? "nicht geprüft"}
+- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}
+- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}
+- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}
 
 GRAPHSENSE / IKNAIO ATTRIBUTION:
 - Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}
