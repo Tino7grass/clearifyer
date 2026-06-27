@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clearifyer — Live Risk Feed</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0d12;
+    --surface:  #111620;
+    --border:   #1e2535;
+    --text:     #c8d0e0;
+    --muted:    #4a5568;
+    --green:    #22c55e;
+    --yellow:   #f59e0b;
+    --red:      #ef4444;
+    --blue:     #3b82f6;
+    --mono:     'IBM Plex Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .header-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .header h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  .pulse-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 8px;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50%       { opacity: 0.7; box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+  }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .stat span {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ── Ticker Container ── */
+  .ticker-wrap {
+    width: 100%;
+    max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .ticker-head {
+    display: grid;
+    grid-template-columns: 1fr 70px 130px 90px 80px;
+    padding: 0.6rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .ticker-body {
+    min-height: 320px;
+    max-height: 420px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── Row ── */
+  .tick-row {
+    display: grid;
+    grid-template-columns: 1fr 70px 130px 90px 80px;
+    align-items: center;
+    padding: 0.65rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.3s;
+    animation: slideIn 0.4s ease-out;
+  }
+
+  .tick-row:last-child { border-bottom: none; }
+  .tick-row:hover { background: rgba(255,255,255,0.02); }
+  .tick-row.new { background: rgba(34,197,94,0.04); }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Address Cell ── */
+  .addr-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .addr-mono {
+    font-family: var(--mono);
+    font-size: 0.73rem;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+
+  .addr-time {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--muted);
+  }
+
+  /* ── Chain Badge ── */
+  .chain-badge {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 4px;
+    display: inline-block;
+    width: fit-content;
+  }
+
+  .chain-eth  { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
+  .chain-btc  { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+  .chain-trx  { background: rgba(239,68,68,0.10);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+
+  /* ── VASP Label ── */
+  .vasp-label {
+    font-size: 0.72rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vasp-unknown {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 0.68rem;
+  }
+
+  /* ── Score Bar ── */
+  .score-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .score-num {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+  }
+
+  .score-bar-bg {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    width: 60px;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.8s ease;
+  }
+
+  .score-green  { color: var(--green); }
+  .score-yellow { color: var(--yellow); }
+  .score-red    { color: var(--red); }
+  .fill-green   { background: var(--green); }
+  .fill-yellow  { background: var(--yellow); }
+  .fill-red     { background: var(--red); }
+
+  /* ── Risk Badge ── */
+  .risk-badge {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    width: fit-content;
+  }
+
+  .risk-low      { background: rgba(34,197,94,0.1);  color: var(--green);  border: 1px solid rgba(34,197,94,0.2); }
+  .risk-medium   { background: rgba(245,158,11,0.1); color: var(--yellow); border: 1px solid rgba(245,158,11,0.2); }
+  .risk-high     { background: rgba(239,68,68,0.1);  color: var(--red);    border: 1px solid rgba(239,68,68,0.2); }
+  .risk-critical { background: rgba(239,68,68,0.2);  color: var(--red);    border: 1px solid rgba(239,68,68,0.4); animation: blink 1.5s step-end infinite; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+  }
+
+  /* ── Footer ── */
+  .ticker-footer {
+    padding: 0.7rem 1.2rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    color: var(--muted);
+  }
+
+  .footer-note {
+    font-size: 0.6rem;
+  }
+
+  /* ── Embed note ── */
+  .embed-note {
+    margin-top: 1.5rem;
+    font-size: 0.68rem;
+    color: var(--muted);
+    font-family: var(--mono);
+    text-align: center;
+    letter-spacing: 0.03em;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-label">Clearifyer · MiCAR Compliance</div>
+  <h1><span class="pulse-dot"></span>Live Risk Feed</h1>
+</div>
+
+<div class="stats-bar">
+  <div class="stat">Geprüft heute: <span id="stat-total">—</span></div>
+  <div class="stat">Kritisch: <span id="stat-critical">—</span></div>
+  <div class="stat">Ø Score: <span id="stat-avg">—</span></div>
+  <div class="stat">Letzte Abfrage: <span id="stat-last">—</span></div>
+</div>
+
+<div class="ticker-wrap">
+  <div class="ticker-head">
+    <div>Adresse</div>
+    <div>Chain</div>
+    <div>VASP / Quelle</div>
+    <div>Score</div>
+    <div>Risiko</div>
+  </div>
+  <div class="ticker-body" id="ticker-body"></div>
+  <div class="ticker-footer">
+    <span>Quellen: OFAC · EU Sanctions · MistTrack · Iknaio · Chainabuse</span>
+    <span class="footer-note">Demo — anonymisierte Beispieldaten</span>
+  </div>
+</div>
+
+<div class="embed-note">
+  Einbetten: &lt;iframe src="liveticker.html" width="820" height="540" frameborder="0"&gt;&lt;/iframe&gt;
+</div>
+
+<script>
+// ── Beispieldaten (echte bekannte Adressen, reale Scores aus Tests) ──
+const ENTRIES = [
+  {
+    addr: "0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b",
+    chain: "eth",
+    vasp: "Tornado Cash (OFAC SDN)",
+    score: 100,
+    risk: "KRITISCH"
+  },
+  {
+    addr: "0x71660c4005BA85c37ccEc55d0C4493E66Fe775d3",
+    chain: "eth",
+    vasp: "Coinbase",
+    score: 4,
+    risk: "GERING"
+  },
+  {
+    addr: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    chain: "eth",
+    vasp: "Vitalik Buterin (bekannt)",
+    score: 5,
+    risk: "GERING"
+  },
+  {
+    addr: "0x7F367cC41522cE07553e823bf3be79A889debe1B",
+    chain: "eth",
+    vasp: "OFAC-gelistet (Lazarus)",
+    score: 100,
+    risk: "KRITISCH"
+  },
+  {
+    addr: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    chain: "btc",
+    vasp: "Unbekannte Wallet",
+    score: 18,
+    risk: "GERING"
+  },
+  {
+    addr: "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",
+    chain: "eth",
+    vasp: "Uniswap Universal Router",
+    score: 12,
+    risk: "GERING"
+  },
+  {
+    addr: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+    chain: "trx",
+    vasp: "Unbekannte Wallet",
+    score: 61,
+    risk: "HOCH"
+  },
+  {
+    addr: "0x28C6c06298d514Db089934071355E5743bf21d60",
+    chain: "eth",
+    vasp: "Binance Hot Wallet",
+    score: 22,
+    risk: "MITTEL"
+  },
+  {
+    addr: "0x098b716b8Aaf21512996dC57EB0615e2383E2f96",
+    chain: "eth",
+    vasp: "Lazarus Group (DPRK)",
+    score: 100,
+    risk: "KRITISCH"
+  },
+  {
+    addr: "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h",
+    chain: "btc",
+    vasp: "Unbekannte Wallet",
+    score: 9,
+    risk: "GERING"
+  },
+  {
+    addr: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+    chain: "eth",
+    vasp: "Uniswap V3: Router",
+    score: 8,
+    risk: "GERING"
+  },
+  {
+    addr: "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549",
+    chain: "eth",
+    vasp: "Binance Cold Wallet",
+    score: 15,
+    risk: "GERING"
+  },
+  {
+    addr: "TDqSquXBgUCLYvYC4XZgrprLK589dkhSCf",
+    chain: "trx",
+    vasp: "Unbekannte Wallet",
+    score: 74,
+    risk: "HOCH"
+  },
+  {
+    addr: "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
+    chain: "eth",
+    vasp: "Kraken Exchange",
+    score: 6,
+    risk: "GERING"
+  },
+  {
+    addr: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+    chain: "btc",
+    vasp: "Unbekannte Wallet",
+    score: 44,
+    risk: "MITTEL"
+  },
+];
+
+// ── Hilfsfunktionen ──────────────────────────────────────────
+
+function truncAddr(addr, chain) {
+  if (chain === "btc") return addr.slice(0, 10) + "…" + addr.slice(-6);
+  return addr.slice(0, 8) + "…" + addr.slice(-5);
+}
+
+function scoreClass(score) {
+  if (score >= 61) return { num: "score-red",    fill: "fill-red" };
+  if (score >= 21) return { num: "score-yellow", fill: "fill-yellow" };
+  return               { num: "score-green",  fill: "fill-green" };
+}
+
+function riskClass(risk) {
+  if (risk === "KRITISCH") return "risk-critical";
+  if (risk === "HOCH")     return "risk-high";
+  if (risk === "MITTEL")   return "risk-medium";
+  return "risk-low";
+}
+
+function timeAgo(ms) {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s <  5)  return "gerade eben";
+  if (s < 60)  return `vor ${s}s`;
+  return `vor ${Math.floor(s/60)}min`;
+}
+
+function nowTime() {
+  return new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+// ── State ────────────────────────────────────────────────────
+
+const MAX_ROWS  = 7;
+const feed      = [];   // { entry, ts, isNew }
+let   totalCount  = 0;
+let   critCount   = 0;
+let   scoreSum    = 0;
+
+// ── Render ───────────────────────────────────────────────────
+
+function render() {
+  const body = document.getElementById("ticker-body");
+  body.innerHTML = "";
+
+  feed.forEach(({ entry: e, ts, isNew }) => {
+    const sc  = scoreClass(e.score);
+    const row = document.createElement("div");
+    row.className = "tick-row" + (isNew ? " new" : "");
+
+    row.innerHTML = `
+      <div class="addr-cell">
+        <span class="addr-mono">${truncAddr(e.addr, e.chain)}</span>
+        <span class="addr-time">${timeAgo(ts)}</span>
+      </div>
+      <div>
+        <span class="chain-badge chain-${e.chain}">${e.chain.toUpperCase()}</span>
+      </div>
+      <div class="${e.vasp.includes("Unbekannte") ? "vasp-unknown" : "vasp-label"}">${e.vasp}</div>
+      <div class="score-cell">
+        <span class="score-num ${sc.num}">${e.score}</span>
+        <div class="score-bar-bg">
+          <div class="score-bar-fill ${sc.fill}" style="width:${e.score}%"></div>
+        </div>
+      </div>
+      <div>
+        <span class="risk-badge ${riskClass(e.risk)}">${e.risk}</span>
+      </div>
+    `;
+    body.appendChild(row);
+  });
+}
+
+function updateStats() {
+  const avg = totalCount > 0 ? Math.round(scoreSum / totalCount) : 0;
+  document.getElementById("stat-total").textContent  = totalCount.toLocaleString("de-DE");
+  document.getElementById("stat-critical").textContent = critCount;
+  document.getElementById("stat-avg").textContent    = avg;
+  document.getElementById("stat-last").textContent   = nowTime();
+}
+
+// ── Ticker logic ─────────────────────────────────────────────
+
+let entryIdx = 0;
+
+function addNextEntry() {
+  const e = ENTRIES[entryIdx % ENTRIES.length];
+  entryIdx++;
+
+  totalCount++;
+  scoreSum += e.score;
+  if (e.risk === "KRITISCH") critCount++;
+
+  feed.unshift({ entry: e, ts: Date.now(), isNew: true });
+
+  // Neues Flag nach kurzer Zeit entfernen
+  setTimeout(() => {
+    if (feed[0]) feed[0].isNew = false;
+  }, 1500);
+
+  if (feed.length > MAX_ROWS) feed.pop();
+
+  render();
+  updateStats();
+}
+
+// ── Timestamps alle 10s aktualisieren ────────────────────────
+setInterval(() => { render(); }, 10000);
+
+// ── Initialisierung: 5 Einträge sofort, dann laufend ────────
+for (let i = 0; i < Math.min(5, ENTRIES.length); i++) {
+  setTimeout(() => addNextEntry(), i * 300);
+}
+
+// Danach alle 4–8 Sekunden einen neuen Eintrag
+function scheduleNext() {
+  const delay = 4000 + Math.random() * 4000;
+  setTimeout(() => {
+    addNextEntry();
+    scheduleNext();
+  }, delay);
+}
+setTimeout(scheduleNext, 5 * 300 + 1000);
+</script>
+</body>
+</html>
