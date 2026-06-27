@@ -1,6 +1,7 @@
 // netlify/functions/check.js
 // Clearifyer — API Aggregator v2.1
 // Neu: Iknaio/GraphSense Integration
+// Neu: Result Cache (Netlify Blobs) — spart externe API-Kosten
 
 const { getStore } = require("@netlify/blobs");
 const vaspList = require('./vasp-list.json');
@@ -32,6 +33,63 @@ const IKNAIO_KEY     = process.env.IKNAIO_API_KEY     || "";
 let _ofacAddresses = null, _ofacTs = 0;
 let _euAddresses   = null, _euTs   = 0;
 const CACHE_TTL = 60 * 60 * 1000;
+
+// ============================================================
+// RESULT CACHE (Netlify Blobs)
+// Vermeidet wiederholte externe API-Calls für bekannte Adressen
+// ============================================================
+
+function getResultCacheStore() {
+  return getStore({
+    name: "clearifyer-result-cache",
+    siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
+    token: process.env.NETLIFY_TOKEN
+  });
+}
+
+// TTL je nach Risiko-Score (in Millisekunden)
+function getCacheTTL(riskScore, sanctioned) {
+  if (sanctioned)       return 0;              // Sanktionierte Adressen: kein Cache (immer live)
+  if (riskScore >= 61)  return 1 * 60 * 60 * 1000;    // High Risk: 1 Stunde
+  if (riskScore >= 21)  return 24 * 60 * 60 * 1000;   // Medium Risk: 24 Stunden
+  return 7 * 24 * 60 * 60 * 1000;                     // Clean: 7 Tage
+}
+
+async function getFromCache(address, network) {
+  try {
+    const store = getResultCacheStore();
+    const key   = `${network}:${address.toLowerCase()}`;
+    const entry = await store.get(key, { type: "json" });
+    if (!entry) return null;
+
+    const ttl = getCacheTTL(entry.riskScore, entry.sanctioned);
+    if (ttl === 0) return null; // Sanktioniert → immer neu prüfen
+
+    const age = Date.now() - new Date(entry.cachedAt).getTime();
+    if (age > ttl) return null; // Abgelaufen
+
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+async function saveToCache(address, network, result) {
+  try {
+    // Sanktionierte Adressen nicht cachen
+    if (result.sanctioned) return;
+
+    const store = getResultCacheStore();
+    const key   = `${network}:${address.toLowerCase()}`;
+    await store.setJSON(key, {
+      ...result,
+      cachedAt: new Date().toISOString(),
+      cacheHit: false
+    });
+  } catch (e) {
+    console.error("Cache-Schreib-Fehler:", e.message);
+  }
+}
 
 // ============================================================
 // 1. ADRESSVALIDIERUNG & CHAIN-ERKENNUNG
@@ -88,8 +146,6 @@ async function resolveENS(input) {
 // 3. OFAC SDN LIST
 // ============================================================
 
-// Bekannte sanktionierte Adressen die im OFAC-CSV nicht als 0x-String stehen
-// Quelle: OFAC SDN-Einträge, ofac.treasury.gov (manuell verifiziert)
 const OFAC_HARDLIST = new Set([
   // Tornado Cash (OFAC 08/2022, SDN-Programm CYBER2)
   "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b",
@@ -314,14 +370,13 @@ async function checkMistTrack(address, network) {
     const riskData         = await riskRes.json();
     const counterpartyData = await counterpartyRes.json();
 
-    // ── Risk Score ───────────────────────────────────────────
-   const riskScore  = riskData?.data?.score ?? null;
-const detailList = riskData?.data?.detail_list ?? [];       // ["Involved Illicit Activity", ...]
-const riskDetail = riskData?.data?.risk_detail ?? [];       // [{entity, risk_type, percent, ...}]
-const labels     = [
-  ...detailList,
-  ...riskDetail.map(r => `${r.entity} (${r.risk_type})`).filter(Boolean)
-];
+    const riskScore  = riskData?.data?.score ?? null;
+    const detailList = riskData?.data?.detail_list ?? [];
+    const riskDetail = riskData?.data?.risk_detail ?? [];
+    const labels     = [
+      ...detailList,
+      ...riskDetail.map(r => `${r.entity} (${r.risk_type})`).filter(Boolean)
+    ];
 
     let risk = "neutral";
     let scoreDetail = "";
@@ -339,7 +394,6 @@ const labels     = [
       }
     }
 
-    // ── Counterparty ─────────────────────────────────────────
     const counterpartyList    = counterpartyData?.address_counterparty_list ?? [];
     const flaggedCounterparties = [];
     let   counterpartyBoost   = 0;
@@ -382,8 +436,9 @@ const labels     = [
     return { available: false, risk: "unknown", detail: "MistTrack vorübergehend nicht verfügbar." };
   }
 }
+
 // ============================================================
-// 8. IKNAIO / GRAPHSENSE  ← NEU
+// 8. IKNAIO / GRAPHSENSE
 // ============================================================
 
 async function checkIknaio(address, network) {
@@ -391,7 +446,6 @@ async function checkIknaio(address, network) {
     return { available: false, detail: "Iknaio nicht konfiguriert.", risk: "unknown" };
   }
 
-  // Chain-Mapping: Iknaio nutzt Kürzel wie "eth", "btc", "trx"
   const chainMap = { eth: "eth", btc: "btc", trx: "trx", bnb: "eth", matic: "eth" };
   const currency = chainMap[network] || "eth";
 
@@ -402,39 +456,32 @@ async function checkIknaio(address, network) {
   };
 
   try {
-    // Adress-Info, Tags und Nachbar-Entitäten parallel abrufen
     const [addrRes, tagsRes] = await Promise.all([
       fetch(`${BASE}/${currency}/addresses/${address}`, { headers }),
       fetch(`${BASE}/${currency}/addresses/${address}/tags`, { headers })
     ]);
 
-    // Adress-Info auswerten
     let addrData = null;
     if (addrRes.ok) {
       addrData = await addrRes.json();
     }
 
-    // Tags auswerten
     let tags = [];
     if (tagsRes.ok) {
       const tagsData = await tagsRes.json();
       tags = tagsData.address_tags || tagsData.tags || [];
     }
 
-    // Tag-Labels extrahieren
     const labels = tags.map(t => t.label || t.category || "").filter(Boolean);
     const concepts = [...new Set(tags.map(t => t.concept || "").filter(Boolean))];
     const abuses = tags.filter(t => t.abuse).map(t => t.abuse);
 
-    // ── Neighbor-Check: Entitäts-Nachbarn auf Risiko-Labels prüfen ──
-    // Nur wenn Entität bekannt — sucht direkte Nachbar-Entitäten mit Abuse-Tags
     let neighborRisk = "neutral";
     let neighborFindings = [];
 
     const entityId = addrData?.entity?.entity;
     if (entityId) {
       try {
-        // Nachbar-Entitäten mit Abuse-Filter abrufen (direction: both, max 20)
         const neighborRes = await fetch(
           `${BASE}/${currency}/entities/${entityId}/neighbors?direction=both&include_labels=true&pagesize=20`,
           { headers }
@@ -471,7 +518,6 @@ async function checkIknaio(address, network) {
       }
     }
 
-    // ── Risikobewertung (direkte Labels + Nachbarn) ──────────────────
     const dangerousKeywords = ["mixer", "tumbler", "darknet", "scam", "ransomware", "hack", "sanctioned", "terrorism"];
     const safeKeywords      = ["exchange", "defi", "cex", "wallet_provider", "mining_pool"];
 
@@ -502,7 +548,6 @@ async function checkIknaio(address, network) {
       detail = "Iknaio: Keine Attribution gefunden (neue oder unbekannte Adresse).";
     }
 
-    // Entitäts-Info
     const entityInfo = addrData?.entity
       ? { id: entityId, noAddresses: addrData.entity.no_addresses }
       : null;
@@ -514,7 +559,7 @@ async function checkIknaio(address, network) {
       labels,
       concepts,
       abuses,
-      neighborFindings,        // auffällige Nachbarn (für Audit-Log & Claude)
+      neighborFindings,
       entity: entityInfo,
       totalTxs: addrData?.no_txs ?? null,
       firstTx: addrData?.first_tx?.timestamp
@@ -550,7 +595,7 @@ async function writeAuditLog(entry) {
 }
 
 // ============================================================
-// 10. CLAUDE KI-ANALYSE (erweitert um Iknaio)
+// 10. CLAUDE KI-ANALYSE
 // ============================================================
 
 async function analyzeWithClaude({ addr, network, context, amount, onChain, chainabuse, formatValid, ofac, euSanctions, misttrack, iknaio }) {
@@ -561,46 +606,7 @@ async function analyzeWithClaude({ addr, network, context, amount, onChain, chai
     sol: "Solana", matic: "Polygon", trx: "Tron"
   };
 
-  const prompt = `Du bist ein Krypto-Sicherheitsanalyst. Antworte NUR als valides JSON ohne Backticks oder Markdown.
-
-ADRESSE: ${addr}
-NETZWERK: ${networkNames[network] || network}
-FORMAT GÜLTIG: ${formatValid}
-BETRAG: ${amount || "nicht angegeben"}
-KONTEXT: ${context || "nicht angegeben"}
-
-ON-CHAIN DATEN:
-- Balance: ${onChain?.balanceEth ?? "n/a"}
-- Transaktionen gesamt: ${onChain?.txCount ?? "n/a"}
-- Erste TX: ${onChain?.firstTxDate ?? "keine"}
-- Nur Empfang: ${onChain?.receivesOnly ?? "unbekannt"}
-- Velocity (24h): ${onChain?.velocity?.detail ?? "n/a"}
-- Contract: ${onChain?.contract?.detail ?? "n/a"}
-
-SANKTIONEN:
-- OFAC (USA): ${ofac?.detail ?? "nicht geprüft"}
-- EU-Sanktionen: ${euSanctions?.detail ?? "nicht geprüft"}
-
-AML-DATENBANKEN:
-- Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}
-- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}
-- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}
-- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}
-
-GRAPHSENSE / IKNAIO ATTRIBUTION:
-- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}
-- Bewertung: ${iknaio?.detail ?? "n/a"}
-- Labels: ${iknaio?.labels?.join(", ") || "keine"}
-- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}
-- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}
-- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}
-- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}
-
-WICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.
-Falls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.
-
-Antworte exakt in diesem JSON-Format:
-{"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
+  const prompt = `Du bist ein Krypto-Sicherheitsanalyst. Antworte NUR als valides JSON ohne Backticks oder Markdown.\n\nADRESSE: ${addr}\nNETZWERK: ${networkNames[network] || network}\nFORMAT GÜLTIG: ${formatValid}\nBETRAG: ${amount || "nicht angegeben"}\nKONTEXT: ${context || "nicht angegeben"}\n\nON-CHAIN DATEN:\n- Balance: ${onChain?.balanceEth ?? "n/a"}\n- Transaktionen gesamt: ${onChain?.txCount ?? "n/a"}\n- Erste TX: ${onChain?.firstTxDate ?? "keine"}\n- Nur Empfang: ${onChain?.receivesOnly ?? "unbekannt"}\n- Velocity (24h): ${onChain?.velocity?.detail ?? "n/a"}\n- Contract: ${onChain?.contract?.detail ?? "n/a"}\n\nSANKTIONEN:\n- OFAC (USA): ${ofac?.detail ?? "nicht geprüft"}\n- EU-Sanktionen: ${euSanctions?.detail ?? "nicht geprüft"}\n\nAML-DATENBANKEN:\n- Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}\n- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}\n- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}\n- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}\n\nGRAPHSENSE / IKNAIO ATTRIBUTION:\n- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}\n- Bewertung: ${iknaio?.detail ?? "n/a"}\n- Labels: ${iknaio?.labels?.join(", ") || "keine"}\n- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}\n- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}\n- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}\n- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}\n\nWICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.\nFalls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.\n\nAntworte exakt in diesem JSON-Format:\n{"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -657,6 +663,23 @@ exports.handler = async (event) => {
     // ── Adressformat validieren ──────────────────────────────
     const formatCheck = validateAddress(address, network);
 
+    // ── CACHE-LOOKUP (vor allen API-Calls) ──────────────────
+    const cached = await getFromCache(address, network);
+    if (cached) {
+      console.log(`Cache HIT: ${network}:${address}`);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          ...cached,
+          cacheHit: true,
+          cachedAt: cached.cachedAt,
+          ensName: ensResult.ensName || cached.ensName || null,
+        })
+      };
+    }
+    console.log(`Cache MISS: ${network}:${address} — rufe externe APIs ab`);
+
     // ── Alle Checks parallel (inkl. Iknaio) ─────────────────
     const [onChain, chainabuse, ofac, euSanctions, misttrack, iknaio] = await Promise.all([
       fetchEtherscan(address, network),
@@ -692,48 +715,52 @@ exports.handler = async (event) => {
       iknaio_labels: iknaio.labels || [],
       iknaio_neighbors_flagged: (iknaio.neighborFindings || []).length,
       sources_checked: ["OFAC", "EU", "Chainabuse", "MistTrack", "Etherscan", "Iknaio"],
+      cache_hit: false,
       duration_ms: Date.now() - start,
     });
 
-    // ── Antwort ──────────────────────────────────────────────
+    // ── Ergebnis zusammenstellen ─────────────────────────────
+    const result = {
+      addr: address,
+      ensName: ensResult.ensName || null,
+      network,
+      formatValid: formatCheck.valid,
+      onChain,
+      chainabuse,
+      ofac,
+      euSanctions,
+      misttrack,
+      iknaio: {
+        available: iknaio.available,
+        risk: iknaio.risk,
+        detail: iknaio.detail,
+        labels: iknaio.labels,
+        concepts: iknaio.concepts,
+        abuses: iknaio.abuses,
+        neighborFindings: (iknaio.neighborFindings || []).map(n => ({
+          labels: n.labels,
+          abuses: n.abuses,
+        })),
+        entitySize: iknaio.entity?.noAddresses ?? null,
+        totalTxs: iknaio.totalTxs,
+        firstTx: iknaio.firstTx,
+        lastTx: iknaio.lastTx,
+      },
+      sanctioned: isSanctioned,
+      sanctionSource,
+      checkedAt: new Date().toLocaleDateString("de-DE"),
+      ...aiResult,
+      vasp: lookupVASP(address),
+      cacheHit: false,
+    };
+
+    // ── Ergebnis in Cache speichern ──────────────────────────
+    await saveToCache(address, network, result);
+
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({
-        addr: address,
-        ensName: ensResult.ensName || null,
-        network,
-        formatValid: formatCheck.valid,
-        onChain,
-        chainabuse,
-        ofac,
-        euSanctions,
-        misttrack,
-        iknaio: {
-          // Nur Labels und Risikobewertung — keine Rohdaten (Iknaio-Nutzungsbedingungen)
-          available: iknaio.available,
-          risk: iknaio.risk,
-          detail: iknaio.detail,
-          labels: iknaio.labels,
-          concepts: iknaio.concepts,
-          abuses: iknaio.abuses,
-          neighborFindings: (iknaio.neighborFindings || []).map(n => ({
-            labels: n.labels,
-            abuses: n.abuses,
-            // entityId wird nicht weitergegeben
-          })),
-          // Entitäts-Metadaten: nur Clustergröße, keine IDs
-          entitySize: iknaio.entity?.noAddresses ?? null,
-          totalTxs: iknaio.totalTxs,
-          firstTx: iknaio.firstTx,
-          lastTx: iknaio.lastTx,
-        },
-        sanctioned: isSanctioned,
-        sanctionSource,
-        checkedAt: new Date().toLocaleDateString("de-DE"),
-        ...aiResult,
-        vasp: lookupVASP(address),
-      })
+      body: JSON.stringify(result)
     };
 
   } catch (err) {
