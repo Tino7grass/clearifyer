@@ -174,6 +174,14 @@ async function resolveENS(input) {
 }
 
 // ============================================================
+// DEMO-WHITELIST — nur diese Adressen sind im Demo-Modus prüfbar
+// ============================================================
+const DEMO_WHITELIST = new Set([
+  "0x71660c4005ba85c37ccec55d0c4493e66fe775d3",
+  "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b",
+]);
+
+// ============================================================
 // 3. OFAC SDN LIST
 // ============================================================
 
@@ -856,8 +864,22 @@ exports.handler = async (event) => {
   const start = Date.now();
 
   try {
-    const { addr, network, context, amount } = JSON.parse(event.body || "{}");
-    if (!addr || !network) return { statusCode: 400, headers, body: JSON.stringify({ error: "addr und network erforderlich" }) };
+ const { addr, network, context, amount, demo } = JSON.parse(event.body || "{}");
+if (!addr || !network) return { statusCode: 400, headers, body: JSON.stringify({ error: "addr und network erforderlich" }) };
+
+if (demo === true) {
+  const normalizedAddr = addr.toLowerCase().trim();
+  if (!DEMO_WHITELIST.has(normalizedAddr)) {
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        error: "demo_restricted",
+        message: "Im Demo-Modus sind nur die zwei vorgegebenen Adressen verfügbar. Für die Prüfung beliebiger Adressen: tino@clearifyer.de für Pilot-Zugang kontaktieren."
+      })
+    };
+  }
+}
 
     // ── ENS auflösen ────────────────────────────────────────
     const ensResult = await resolveENS(addr);
