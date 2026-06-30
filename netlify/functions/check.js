@@ -252,6 +252,14 @@ async function checkEUSanctions(address) {
 // 5. ETHERSCAN
 // ============================================================
 
+// Bekannte Stablecoin-Contracts (Ethereum Mainnet) — für Token-Transfer-Filterung
+const KNOWN_TOKEN_CONTRACTS = {
+  eth: {
+    USDT: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+    USDC: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  },
+};
+
 async function fetchEtherscan(addr, network) {
   const chainIds = { eth: 1, bnb: 56, matic: 137 };
   const chainId  = chainIds[network];
@@ -259,17 +267,19 @@ async function fetchEtherscan(addr, network) {
 
   try {
     const base = `https://api.etherscan.io/v2/api?chainid=${chainId}&apikey=${ETHERSCAN_KEY}`;
-    const [balRes, txAscRes, txDescRes, codeRes] = await Promise.all([
+    const [balRes, txAscRes, txDescRes, codeRes, tokenTxRes] = await Promise.all([
       fetch(`${base}&module=account&action=balance&address=${addr}&tag=latest`),
       fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=1&sort=asc`),
       fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=100&sort=desc`),
-      fetch(`${base}&module=proxy&action=eth_getCode&address=${addr}&tag=latest`)
+      fetch(`${base}&module=proxy&action=eth_getCode&address=${addr}&tag=latest`),
+      fetch(`${base}&module=account&action=tokentx&address=${addr}&page=1&offset=100&sort=desc`)
     ]);
 
     const balData    = await balRes.json();
     const txAscData  = await txAscRes.json();
     const txDescData = await txDescRes.json();
     const codeData   = await codeRes.json();
+    const tokenTxData = await tokenTxRes.json();
 
     const balanceEth = balData.status === "1"
       ? (parseFloat(balData.result) / 1e18).toFixed(6) : null;
@@ -287,6 +297,25 @@ async function fetchEtherscan(addr, network) {
       lastTxDate = new Date(parseInt(txs[0].timeStamp) * 1000).toLocaleDateString("de-DE");
       receivesOnly = txs.every(tx => tx.to?.toLowerCase() === addr.toLowerCase());
       velocity24h  = txs.filter(tx => parseInt(tx.timeStamp) > now - 86400).length;
+    }
+
+    // ── ERC20 Token-Historie auswerten (insb. USDT/USDC) ──────
+    let tokenTransfers = { available: false, totalCount: 0, byToken: {} };
+    if (tokenTxData.status === "1" && Array.isArray(tokenTxData.result)) {
+      const transfers = tokenTxData.result;
+      const grouped = {};
+      for (const t of transfers) {
+        const symbol = t.tokenSymbol || t.tokenName || t.contractAddress;
+        if (!grouped[symbol]) {
+          grouped[symbol] = { count: 0, lastTxDate: null, contract: t.contractAddress, receivedOnly: true };
+        }
+        grouped[symbol].count++;
+        grouped[symbol].lastTxDate = new Date(parseInt(t.timeStamp) * 1000).toLocaleDateString("de-DE");
+        if (t.to?.toLowerCase() !== addr.toLowerCase()) grouped[symbol].receivedOnly = false;
+      }
+      tokenTransfers = { available: true, totalCount: transfers.length, byToken: grouped };
+    } else if (tokenTxData.message === "No transactions found") {
+      tokenTransfers = { available: true, totalCount: 0, byToken: {} };
     }
 
     let velocityRisk = "low";
@@ -315,7 +344,8 @@ async function fetchEtherscan(addr, network) {
     return {
       balanceEth, txCount, firstTxDate, lastTxDate, receivesOnly,
       velocity: { velocity24h, risk: velocityRisk, detail: velocityDetail },
-      contract: { isContract, risk: contractRisk, detail: contractDetail }
+      contract: { isContract, risk: contractRisk, detail: contractDetail },
+      tokenTransfers
     };
   } catch (e) {
     return { error: e.message };
@@ -577,6 +607,125 @@ async function checkIknaio(address, network) {
 }
 
 // ============================================================
+// 8b. DATENQUELLEN-COVERAGE — welche Chain unterstützt welche Quelle wirklich
+// ============================================================
+
+// Explizite Wahrheit statt stillschweigender Fallbacks in den Fetchern.
+const CHAIN_SOURCE_SUPPORT = {
+  eth:   { etherscan: true,  misttrack: true,  iknaio: true  },
+  bnb:   { etherscan: true,  misttrack: true,  iknaio: false }, // Iknaio mapped bnb->eth: fachlich nicht belastbar
+  matic: { etherscan: true,  misttrack: true,  iknaio: false }, // gleiches Problem
+  btc:   { etherscan: false, misttrack: true,  iknaio: true  },
+  trx:   { etherscan: false, misttrack: true,  iknaio: true  },
+  sol:   { etherscan: false, misttrack: false, iknaio: false }, // aktuell von KEINER Quelle wirklich unterstützt
+};
+
+function buildDataSourceStatus({ network, onChain, chainabuse, misttrack, iknaio }) {
+  const support = CHAIN_SOURCE_SUPPORT[network] || { etherscan: false, misttrack: false, iknaio: false };
+
+  return {
+    ofac: { requested: true, responded: true, usedInScore: true },
+    euSanctions: { requested: true, responded: true, usedInScore: true },
+    chainabuse: {
+      requested: !!CHAINABUSE_KEY,
+      responded: !!CHAINABUSE_KEY && chainabuse?.reports !== undefined,
+      usedInScore: !!CHAINABUSE_KEY,
+    },
+    etherscan: {
+      chainSupported: support.etherscan,
+      requested: support.etherscan,
+      responded: support.etherscan && !onChain?.error && !onChain?.skipped,
+      usedInScore: support.etherscan && !onChain?.error && !onChain?.skipped,
+    },
+    misttrack: {
+      chainSupported: support.misttrack,
+      requested: support.misttrack && !!MISTTRACK_KEY,
+      responded: support.misttrack && misttrack?.available === true,
+      usedInScore: support.misttrack && misttrack?.available === true,
+    },
+    iknaio: {
+      chainSupported: support.iknaio,
+      requested: support.iknaio && !!IKNAIO_KEY,
+      responded: support.iknaio && iknaio?.available === true,
+      usedInScore: support.iknaio && iknaio?.available === true,
+    },
+  };
+}
+
+// Vollständigkeits-Score: wie viele relevante, für diese Chain unterstützte
+// Quellen haben tatsächlich geantwortet und sind in die Bewertung eingeflossen
+function calcCoverageRatio(status) {
+  const relevant = Object.values(status).filter(s =>
+    s.chainSupported === true || s.chainSupported === undefined
+  );
+  const used = relevant.filter(s => s.usedInScore).length;
+  return relevant.length > 0 ? used / relevant.length : 1;
+}
+
+// ============================================================
+// 8c. HARTE SCORE-FLOORS (Code-Override nach der KI-Antwort)
+// Diese Regeln gelten IMMER, unabhängig davon, was die KI ausgibt.
+// Sie können den Score nur nach OBEN korrigieren, nie nach unten.
+// ============================================================
+
+const SUPPORT_LEAK_CONTEXT_VALUES = new Set([
+  "support", // entspricht id="ctx-support" in app.html: "Support schickte sie mir (Telegram, WhatsApp, E-Mail)"
+]);
+
+function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, misttrack, context, coverageRatio }) {
+  let score = typeof aiResult.riskScore === "number" ? aiResult.riskScore : 0;
+  let level = aiResult.riskLevel || "GERING";
+  const appliedFloors = [];
+  let recommendation = aiResult.recommendation || "";
+
+  // Floor 1: Sanktionen sind ein Code-Override, kein Prompt-Vorschlag
+  if (isSanctioned) {
+    if (score !== 100) appliedFloors.push(`Sanktionstreffer (${sanctionSource}) erzwingt Score 100, KI gab ${score} aus.`);
+    score = 100;
+    level = "KRITISCH";
+    recommendation = `⛔ SANKTIONSTREFFER (${sanctionSource}). Diese Bewertung wird unabhängig von der KI-Einschätzung durch eine Code-Regel erzwungen, da Sanktionsverstöße rechtlich keine Ermessensfrage sind. ${recommendation}`.trim();
+  }
+
+  // Floor 2: Iknaio-Missbrauchsmeldung erzwingt Mindest-Score HOCH
+  if (!isSanctioned && Array.isArray(iknaio?.abuses) && iknaio.abuses.length > 0 && score < 70) {
+    appliedFloors.push(`Iknaio meldet Missbrauch (${iknaio.abuses.join(", ")}), KI-Score (${score}) lag unter Floor 70.`);
+    score = Math.max(score, 70);
+    level = "HOCH";
+  }
+
+  // Floor 3: MistTrack flaggt Risiko-Gegenparteien erzwingt Mindest-Score HOCH
+  if (!isSanctioned && Array.isArray(misttrack?.flaggedCounterparties) && misttrack.flaggedCounterparties.length > 0 && score < 70) {
+    appliedFloors.push(`MistTrack flaggt Risiko-Gegenparteien (${misttrack.flaggedCounterparties.join(", ")}), KI-Score (${score}) lag unter Floor 70.`);
+    score = Math.max(score, 70);
+    level = "HOCH";
+  }
+
+  // Floor 4: Kontext "Support schickte mir die Adresse" erzwingt Mindest-Score + Pflicht-Disclaimer
+  if (!isSanctioned && SUPPORT_LEAK_CONTEXT_VALUES.has(context) && score < 60) {
+    appliedFloors.push(`Kontext "Support schickte Adresse" erzwingt Floor 60, KI-Score (${score}) lag darunter.`);
+    score = Math.max(score, 60);
+    level = score >= 70 ? "HOCH" : "MITTEL";
+    recommendation = `⚠️ WARNUNG: Du hast angegeben, dass diese Adresse dir vom "Support" über Telegram/WhatsApp/E-Mail geschickt wurde. Kein legitimer Kundendienst verschickt jemals eine externe Wallet-Adresse zur Einzahlung — das ist ein klassisches Pig-Butchering-Muster. Dieser Hinweis wird unabhängig vom On-Chain-Score immer angezeigt. ${recommendation}`.trim();
+  }
+
+  // Floor 5: Datenlücke transparent machen, wenn Coverage niedrig ist
+  if (coverageRatio < 0.6) {
+    appliedFloors.push(`Niedrige Datenabdeckung (${Math.round(coverageRatio * 100)}%) für diese Chain.`);
+    recommendation = `${recommendation}\n\nHinweis: Für diese Chain konnten nicht alle relevanten Datenquellen abgerufen oder ausgewertet werden (Abdeckung: ${Math.round(coverageRatio * 100)}%). Der Score ist entsprechend mit eingeschränkter Verlässlichkeit zu betrachten.`.trim();
+  }
+
+  return {
+    riskScore: score,
+    riskLevel: level,
+    recommendation,
+    summary: aiResult.summary,
+    findings: aiResult.findings,
+    appliedFloors,
+    scoreOverridden: appliedFloors.length > 0,
+  };
+}
+
+// ============================================================
 // 9. AUDIT-LOG (Netlify Blobs)
 // ============================================================
 
@@ -606,7 +755,7 @@ async function analyzeWithClaude({ addr, network, context, amount, onChain, chai
     sol: "Solana", matic: "Polygon", trx: "Tron"
   };
 
-  const prompt = `Du bist ein Krypto-Sicherheitsanalyst. Antworte NUR als valides JSON ohne Backticks oder Markdown.\n\nADRESSE: ${addr}\nNETZWERK: ${networkNames[network] || network}\nFORMAT GÜLTIG: ${formatValid}\nBETRAG: ${amount || "nicht angegeben"}\nKONTEXT: ${context || "nicht angegeben"}\n\nON-CHAIN DATEN:\n- Balance: ${onChain?.balanceEth ?? "n/a"}\n- Transaktionen gesamt: ${onChain?.txCount ?? "n/a"}\n- Erste TX: ${onChain?.firstTxDate ?? "keine"}\n- Nur Empfang: ${onChain?.receivesOnly ?? "unbekannt"}\n- Velocity (24h): ${onChain?.velocity?.detail ?? "n/a"}\n- Contract: ${onChain?.contract?.detail ?? "n/a"}\n\nSANKTIONEN:\n- OFAC (USA): ${ofac?.detail ?? "nicht geprüft"}\n- EU-Sanktionen: ${euSanctions?.detail ?? "nicht geprüft"}\n\nAML-DATENBANKEN:\n- Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}\n- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}\n- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}\n- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}\n\nGRAPHSENSE / IKNAIO ATTRIBUTION:\n- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}\n- Bewertung: ${iknaio?.detail ?? "n/a"}\n- Labels: ${iknaio?.labels?.join(", ") || "keine"}\n- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}\n- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}\n- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}\n- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}\n\nWICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.\nFalls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.\n\nAntworte exakt in diesem JSON-Format:\n{"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
+  const prompt = `Du bist ein Krypto-Sicherheitsanalyst. Antworte NUR als valides JSON ohne Backticks oder Markdown.\n\nADRESSE: ${addr}\nNETZWERK: ${networkNames[network] || network}\nFORMAT GÜLTIG: ${formatValid}\nBETRAG: ${amount || "nicht angegeben"}\nKONTEXT: ${context || "nicht angegeben"}\n\nON-CHAIN DATEN:\n- Balance: ${onChain?.balanceEth ?? "n/a"}\n- Transaktionen gesamt: ${onChain?.txCount ?? "n/a"}\n- Erste TX: ${onChain?.firstTxDate ?? "keine"}\n- Nur Empfang: ${onChain?.receivesOnly ?? "unbekannt"}\n- Velocity (24h): ${onChain?.velocity?.detail ?? "n/a"}\n- Contract: ${onChain?.contract?.detail ?? "n/a"}\n- ERC20-Token-Transfers: ${onChain?.tokenTransfers?.available ? `${onChain.tokenTransfers.totalCount} Transfers — ${Object.entries(onChain.tokenTransfers.byToken || {}).map(([sym, d]) => `${sym}: ${d.count}x, zuletzt ${d.lastTxDate}`).join("; ") || "keine"}` : "nicht verfügbar"}\n\nSANKTIONEN:\n- OFAC (USA): ${ofac?.detail ?? "nicht geprüft"}\n- EU-Sanktionen: ${euSanctions?.detail ?? "nicht geprüft"}\n\nAML-DATENBANKEN:\n- Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}\n- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}\n- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}\n- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}\n\nGRAPHSENSE / IKNAIO ATTRIBUTION:\n- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}\n- Bewertung: ${iknaio?.detail ?? "n/a"}\n- Labels: ${iknaio?.labels?.join(", ") || "keine"}\n- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}\n- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}\n- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}\n- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}\n\nWICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.\nFalls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.\n\nAntworte exakt in diesem JSON-Format:\n{"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -694,11 +843,23 @@ exports.handler = async (event) => {
     const isSanctioned = ofac.sanctioned || euSanctions.sanctioned;
     const sanctionSource = ofac.sanctioned ? "OFAC SDN (US Treasury)" : euSanctions.sanctioned ? "EU Financial Sanctions File" : null;
 
+    // ── Datenquellen-Status & Coverage (vor der KI-Analyse, damit transparent ist was überhaupt vorlag) ──
+    const dataSourceStatus = buildDataSourceStatus({ network, onChain, chainabuse, misttrack, iknaio });
+    const coverageRatio = calcCoverageRatio(dataSourceStatus);
+
     // ── KI-Analyse ───────────────────────────────────────────
-    const aiResult = await analyzeWithClaude({
+    const rawAiResult = await analyzeWithClaude({
       addr: address, network, context, amount,
       onChain, chainabuse, formatValid: formatCheck.valid,
       ofac, euSanctions, misttrack, iknaio
+    });
+
+    // ── Harte Score-Floors: Code-Override, KI-Output ist nur ein Vorschlag ──
+    const aiResult = applyScoreFloors({
+      aiResult: rawAiResult,
+      isSanctioned, sanctionSource,
+      iknaio, misttrack, context,
+      coverageRatio,
     });
 
     // ── Audit-Log schreiben ──────────────────────────────────
@@ -707,13 +868,18 @@ exports.handler = async (event) => {
       ens_name: ensResult.ensName || null,
       chain: network,
       context_answer: context || "–",
-      risk_score: aiResult.riskScore,
+      risk_score_raw_ai: rawAiResult.riskScore,
+      risk_score_final: aiResult.riskScore,
       risk_level: aiResult.riskLevel,
+      score_overridden: aiResult.scoreOverridden,
+      applied_floors: aiResult.appliedFloors,
       sanctioned: isSanctioned,
       sanction_source: sanctionSource,
       iknaio_risk: iknaio.risk,
       iknaio_labels: iknaio.labels || [],
       iknaio_neighbors_flagged: (iknaio.neighborFindings || []).length,
+      data_source_status: dataSourceStatus,
+      coverage_ratio: coverageRatio,
       sources_checked: ["OFAC", "EU", "Chainabuse", "MistTrack", "Etherscan", "Iknaio"],
       cache_hit: false,
       duration_ms: Date.now() - start,
@@ -748,6 +914,8 @@ exports.handler = async (event) => {
       },
       sanctioned: isSanctioned,
       sanctionSource,
+      dataSourceStatus,
+      coverageRatio,
       checkedAt: new Date().toLocaleDateString("de-DE"),
       ...aiResult,
       vasp: lookupVASP(address),
@@ -768,3 +936,11 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+// ── Zusätzliche Exports für Unit-/Regressionstests (test-floors.js) ──
+// Ändert das Verhalten der Netlify Function nicht — exports.handler bleibt
+// der Entry Point, der Rest sind benannte Exports für lokale Tests.
+exports.applyScoreFloors = applyScoreFloors;
+exports.buildDataSourceStatus = buildDataSourceStatus;
+exports.calcCoverageRatio = calcCoverageRatio;
+exports.CHAIN_SOURCE_SUPPORT = CHAIN_SOURCE_SUPPORT;
