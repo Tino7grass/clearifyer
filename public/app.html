@@ -266,6 +266,17 @@ function selectNet(btn) {
   btn.classList.add('active');
   selectedNetwork = btn.dataset.net;
   onAddrInput(document.getElementById('addr'));
+
+  var warnEl = document.getElementById('net-coverage-warning');
+  if (warnEl) warnEl.remove();
+  if (selectedNetwork === 'sol') {
+    var card = document.querySelector('.net-grid').parentNode;
+    var w = document.createElement('div');
+    w.id = 'net-coverage-warning';
+    w.style.cssText = 'font-size:0.74rem;color:var(--amber);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:0.6rem 0.8rem;margin-bottom:1.25rem;';
+    w.textContent = '⚠️ Solana wird aktuell nur eingeschränkt unterstützt — On-Chain-Daten, MistTrack und Iknaio liefern für SOL-Adressen keine vollständigen Ergebnisse. Sanktionslisten- und Chainabuse-Prüfung funktionieren weiterhin.';
+    card.insertBefore(w, card.querySelector('.ctx-card'));
+  }
 }
 
 function selectCtx(val) {
@@ -343,6 +354,25 @@ function renderResult(r) {
     sanctionHtml = '<div style="background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.5);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:var(--red);font-weight:600;">⛔ SANKTIONSTREFFER: ' + (r.sanctionSource || 'Sanktionsliste') + '<br><span style="font-weight:400;font-size:0.8rem;opacity:.8">Transaktionen mit dieser Adresse sind rechtlich verboten.</span></div>';
   }
 
+  // Score-Override-Transparenz: zeigt an, wenn eine Code-Regel den KI-Score korrigiert hat
+  var overrideHtml = '';
+  if (r.scoreOverridden && r.appliedFloors && r.appliedFloors.length) {
+    var floorsList = '';
+    for (var fi = 0; fi < r.appliedFloors.length; fi++) {
+      floorsList += '<li style="margin-bottom:0.25rem">' + r.appliedFloors[fi] + '</li>';
+    }
+    overrideHtml = '<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.78rem;color:var(--muted);">' +
+      '<strong style="color:var(--blue)">ℹ️ Score wurde regelbasiert korrigiert</strong>' +
+      '<ul style="margin:0.4rem 0 0 1.1rem;padding:0">' + floorsList + '</ul></div>';
+  }
+
+  // Datenabdeckungs-Warnung: zeigt, wenn nicht alle relevanten Quellen für diese Chain genutzt werden konnten
+  var coverageHtml = '';
+  if (typeof r.coverageRatio === 'number' && r.coverageRatio < 0.6) {
+    coverageHtml = '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:0.85rem 1rem;margin-bottom:1rem;font-size:0.78rem;color:var(--amber);">' +
+      '⚠️ Eingeschränkte Datenabdeckung für diese Chain (' + Math.round(r.coverageRatio * 100) + '%). Nicht alle Datenquellen unterstützen dieses Netzwerk vollständig — Score mit Vorsicht interpretieren.</div>';
+  }
+
   // Sanktionslisten-Kacheln
   var sanctionDataHtml = '';
   if (r.ofac || r.euSanctions) {
@@ -364,6 +394,19 @@ function renderResult(r) {
     if (oc.velocity)            onChainHtml += '<div class="data-cell"><div class="dc-label">Velocity 24h</div><div class="dc-value" style="color:' + (oc.velocity.risk === 'high' ? 'var(--red)' : oc.velocity.risk === 'medium' ? 'var(--amber)' : 'var(--green)') + '">' + oc.velocity.velocity24h + ' TX</div></div>';
     if (oc.contract)            onChainHtml += '<div class="data-cell"><div class="dc-label">Adress-Typ</div><div class="dc-value" style="font-size:0.75rem;color:' + (oc.contract.risk === 'high' ? 'var(--red)' : 'var(--green)') + '">' + (oc.contract.isContract ? 'Contract' : 'Wallet ✓') + '</div></div>';
     onChainHtml += '</div>';
+
+    // ERC20-Token-Historie (USDT, USDC etc.) — separat, da nativer ETH-Verlauf bei reinen Token-Wallets irreführend sein kann
+    if (oc.tokenTransfers && oc.tokenTransfers.available && oc.tokenTransfers.totalCount > 0) {
+      onChainHtml += '<div class="card-label" style="margin-top:0.5rem">ERC20-Token-Aktivität</div><div class="data-grid">';
+      var tokens = oc.tokenTransfers.byToken || {};
+      for (var sym in tokens) {
+        var td = tokens[sym];
+        onChainHtml += '<div class="data-cell"><div class="dc-label">' + sym + '</div><div class="dc-value" style="font-size:0.78rem">' + td.count + 'x · zuletzt ' + td.lastTxDate + '</div></div>';
+      }
+      onChainHtml += '</div>';
+    } else if (oc.balanceEth === '0.000000' && (!oc.tokenTransfers || oc.tokenTransfers.totalCount === 0)) {
+      onChainHtml += '<div style="font-size:0.74rem;color:var(--muted);margin-top:0.4rem">Hinweis: 0 ETH-Balance und keine ERC20-Token-Aktivität gefunden — Adresse zeigt keine nennenswerte Historie auf dieser Chain.</div>';
+    }
   }
 
   // Chainabuse
@@ -415,10 +458,11 @@ if (r.vasp) {
 
   inner.innerHTML =
     '<div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">' + displayAddr + '</div>' +
-    sanctionHtml +
+    sanctionHtml + coverageHtml +
     '<div class="score-row"><span>Risiko-Score</span><span class="score-val" style="color:' + color + '">' + score + '/100 · ' + r.riskLevel + '</span></div>' +
     '<div class="score-track"><div class="score-fill" style="width:' + score + '%;background:' + color + '"></div></div>' +
     '<div class="verdict ' + vClass + '"><span class="verdict-icon">' + icon + '</span><span>' + r.summary + '</span></div>' +
+    overrideHtml +
     sanctionDataHtml + onChainHtml + chainabuseHtml + misttrackHtml + vaspHtml +
     '<div class="card-label" style="margin-top:0.5rem">Befunde</div>' +
     '<ul class="findings">' + findingsHtml + '</ul>' +
