@@ -55,10 +55,17 @@ function getCacheTTL(riskScore, sanctioned) {
   return 7 * 24 * 60 * 60 * 1000;                     // Clean: 7 Tage
 }
 
+// Versionsnummer der Score-/Recommendation-Logik. MUSS bei jeder inhaltlichen
+// Änderung an applyScoreFloors() oder den Floor-Texten hochgezählt werden —
+// sonst liefert der Cache alte, ggf. fehlerhafte Texte/Scores weiter aus,
+// obwohl der Code längst korrigiert wurde (siehe Vorfall: widersprüchlicher
+// Empfehlungstext blieb nach Fix noch 24h im Cache aktiv).
+const SCORE_LOGIC_VERSION = "v2";
+
 async function getFromCache(address, network, context) {
   try {
     const store = getResultCacheStore();
-    const key   = `${network}:${address.toLowerCase()}:${context || "none"}`;
+    const key   = `${network}:${address.toLowerCase()}:${context || "none"}:${SCORE_LOGIC_VERSION}`;
     const entry = await store.get(key, { type: "json" });
     if (!entry) return null;
 
@@ -80,7 +87,7 @@ async function saveToCache(address, network, context, result) {
     if (result.sanctioned) return;
 
     const store = getResultCacheStore();
-    const key   = `${network}:${address.toLowerCase()}:${context || "none"}`;
+    const key   = `${network}:${address.toLowerCase()}:${context || "none"}:${SCORE_LOGIC_VERSION}`;
     await store.setJSON(key, {
       ...result,
       cachedAt: new Date().toISOString(),
