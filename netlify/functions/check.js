@@ -700,12 +700,15 @@ function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, mist
     level = "HOCH";
   }
 
-  // Floor 4: Kontext "Support schickte mir die Adresse" erzwingt Mindest-Score + Pflicht-Disclaimer
+  // Floor 4: Kontext "Support schickte mir die Adresse" erzwingt Mindest-Score + Pflicht-Disclaimer.
+  // WICHTIG: Der KI-Empfehlungstext wird hier ERSETZT, nicht nur ergänzt — sonst kann der
+  // ursprüngliche KI-Text (z.B. "unverdächtig, keine Due-Diligence nötig") dem erzwungenen
+  // Warnhinweis im selben Absatz widersprechen.
   if (!isSanctioned && SUPPORT_LEAK_CONTEXT_VALUES.has(context) && score < 60) {
     appliedFloors.push(`Kontext "Support schickte Adresse" erzwingt Floor 60, KI-Score (${score}) lag darunter.`);
     score = Math.max(score, 60);
     level = score >= 70 ? "HOCH" : "MITTEL";
-    recommendation = `⚠️ WARNUNG: Du hast angegeben, dass diese Adresse dir vom "Support" über Telegram/WhatsApp/E-Mail geschickt wurde. Kein legitimer Kundendienst verschickt jemals eine externe Wallet-Adresse zur Einzahlung — das ist ein klassisches Pig-Butchering-Muster. Dieser Hinweis wird unabhängig vom On-Chain-Score immer angezeigt. ${recommendation}`.trim();
+    recommendation = `⚠️ WARNUNG: Du hast angegeben, dass diese Adresse dir vom "Support" über Telegram/WhatsApp/E-Mail geschickt wurde. Kein legitimer Kundendienst verschickt jemals eine externe Wallet-Adresse zur Einzahlung — das ist ein klassisches Pig-Butchering-Muster, unabhängig davon, wie sauber die On-Chain-Historie der Adresse aussieht. Sende kein Geld an diese Adresse, ohne den Auftraggeber über einen unabhängigen, verifizierten Kanal zu kontaktieren (nicht über denselben Chat, der dir die Adresse geschickt hat).\n\nZur Einordnung: Die On-Chain-Analyse selbst zeigt ${aiResult.summary ? aiResult.summary.replace(/\.$/, "") : "keine Sanktions- oder Missbrauchstreffer"}. Das entkräftet die Kontext-Warnung jedoch NICHT — eine technisch saubere Adresse schützt nicht vor Betrug, wenn der Übermittlungsweg verdächtig ist.`;
   }
 
   // Floor 5: Datenlücke transparent machen, wenn Coverage niedrig ist
