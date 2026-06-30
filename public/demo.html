@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clearifyer Demo — Know before you send</title>
+<meta name="description" content="Demo: Prüfe Blockchain-Adressen auf Betrugsrisiken bevor du Krypto sendest. Kostenlos, DACH, Deutsch.">
+<style>
+  :root {
+    --bg:      #0a0f1e;
+    --surface: #161f3a;
+    --border:  #253352;
+    --text:    #f0f4ff;
+    --muted:   #6b7fa8;
+    --subtle:  #3a4f7a;
+    --green:   #10b981;
+    --red:     #ef4444;
+    --amber:   #f59e0b;
+    --blue:    #3b82f6;
+    --mono: 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0 1rem 4rem; }
+
+  header { text-align: center; padding: 3rem 1rem 2rem; }
+  .logo  { font-size: 2.5rem; margin-bottom: 0.5rem; display: block; }
+  .wordmark { font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; }
+  .wordmark span { color: var(--green); }
+  .claim { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); margin-top: 0.4rem; }
+
+  .demo-banner {
+    max-width: 680px; margin: 0 auto 1.25rem; background: rgba(59,130,246,.08);
+    border: 1px solid rgba(59,130,246,.3); border-radius: 10px; padding: 0.8rem 1rem;
+    font-size: 0.8rem; color: var(--blue); text-align: center; line-height: 1.5;
+  }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; max-width: 680px; margin: 0 auto 1.25rem; }
+  .card-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 700; margin-bottom: 0.75rem; }
+
+  .demo-addr-picker { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
+  .demo-addr-btn {
+    text-align: left; background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 0.75rem 1rem; cursor: pointer; transition: all 0.15s;
+    color: var(--text); font-family: var(--sans);
+  }
+  .demo-addr-btn:hover { border-color: var(--subtle); }
+  .demo-addr-btn.active { border-color: var(--green); background: rgba(16,185,129,0.07); }
+  .demo-addr-label { font-size: 0.78rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .demo-addr-mono { font-size: 0.68rem; color: var(--muted); font-family: var(--mono); word-break: break-all; }
+  .demo-addr-tag { display: inline-block; font-size: 0.6rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.4rem; vertical-align: middle; }
+  .demo-addr-tag.clean { background: rgba(16,185,129,.18); color: var(--green); }
+  .demo-addr-tag.risky { background: rgba(239,68,68,.18); color: var(--red); }
+
+  .addr-wrap { position: relative; margin-bottom: 1.25rem; }
+  textarea.addr {
+    width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 12px; color: var(--text); font-family: var(--mono); font-size: 0.78rem;
+    padding: 0.85rem 1rem; outline: none; resize: none; min-height: 76px;
+    transition: border-color 0.2s; line-height: 1.6;
+  }
+  textarea.addr[readonly] { opacity: 0.75; cursor: not-allowed; }
+  textarea.addr:focus { border-color: var(--green); }
+  textarea.addr::placeholder { color: var(--subtle); }
+  .addr-valid   { border-color: var(--green) !important; }
+  .addr-invalid { border-color: var(--red) !important; }
+
+  .ctx-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; }
+  .ctx-q { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.75rem; }
+  .ctx-opt {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0.75rem;
+    border-radius: 9px; border: 1px solid var(--border); margin-bottom: 0.4rem;
+    cursor: pointer; font-size: 0.8rem; color: var(--muted); transition: all 0.15s;
+  }
+  .ctx-opt:hover { border-color: var(--subtle); }
+  .ctx-opt.active { border-color: var(--green); background: rgba(16,185,129,0.07); color: var(--text); }
+  .ctx-radio { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; transition: all 0.15s; }
+  .ctx-opt.active .ctx-radio { border-color: var(--green); background: var(--green); }
+
+  button.submit {
+    width: 100%; background: var(--green); color: #000; border: none;
+    border-radius: 12px; font-size: 0.95rem; font-weight: 800; padding: 0.9rem;
+    cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.01em;
+  }
+  button.submit:hover:not(:disabled) { opacity: 0.88; }
+  button.submit:disabled { opacity: 0.35; cursor: not-allowed; }
+  .hint { font-size: 0.72rem; color: var(--muted); text-align: center; margin-top: 0.6rem; }
+
+  #result { display: none; }
+  .loading { text-align: center; padding: 1.5rem 0; color: var(--muted); font-size: 0.88rem; }
+  .spinner {
+    display: inline-block; width: 18px; height: 18px; vertical-align: middle;
+    border: 2px solid var(--border); border-top-color: var(--green);
+    border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 0.4rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .verdict {
+    display: flex; align-items: flex-start; gap: 0.85rem;
+    padding: 1rem 1.1rem; border-radius: 10px; margin-bottom: 1rem;
+    font-weight: 600; font-size: 0.95rem; line-height: 1.4;
+  }
+  .verdict.danger { background: rgba(239,68,68,.09); border: 1px solid rgba(239,68,68,.35); color: var(--red); }
+  .verdict.warn   { background: rgba(245,158,11,.09); border: 1px solid rgba(245,158,11,.35); color: var(--amber); }
+  .verdict.ok     { background: rgba(16,185,129,.09); border: 1px solid rgba(16,185,129,.35); color: var(--green); }
+  .verdict-icon   { font-size: 1.3rem; flex-shrink: 0; }
+
+  .score-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; font-size: 0.8rem; color: var(--muted); }
+  .score-val { font-size: 1.1rem; font-weight: 800; }
+  .score-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-bottom: 1.1rem; }
+  .score-fill  { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+  .data-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
+  .data-cell { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; }
+  .dc-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .dc-value { font-size: 0.9rem; font-weight: 700; margin-top: 0.15rem; font-family: var(--mono); }
+
+  .findings { list-style: none; margin-bottom: 1rem; }
+  .findings li { display: flex; gap: 0.6rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.83rem; line-height: 1.5; align-items: flex-start; }
+  .findings li:last-child { border-bottom: none; }
+  .ftag { font-size: 0.62rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 0.1rem; }
+  .ftag.rot    { background: rgba(239,68,68,.18); color: var(--red); }
+  .ftag.gelb   { background: rgba(245,158,11,.18); color: var(--amber); }
+  .ftag.gruen  { background: rgba(16,185,129,.18); color: var(--green); }
+  .ftag.blau   { background: rgba(59,130,246,.18); color: var(--blue); }
+
+  .reco { background: rgba(16,185,129,.05); border: 1px solid rgba(16,185,129,.2); border-radius: 10px; padding: 0.9rem 1rem; font-size: 0.83rem; line-height: 1.65; margin-bottom: 1rem; color: var(--muted); }
+  .reco strong { color: var(--text); }
+
+  .actions { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+  .action-primary   { padding: 0.8rem; border-radius: 10px; background: var(--red);     color: #fff;        font-weight: 700; font-size: 0.85rem; border: none; cursor: pointer; }
+  .action-tertiary  { padding: 0.8rem; border-radius: 10px; background: transparent;    color: var(--muted); font-size: 0.85rem; border: 1px solid var(--border); cursor: pointer; }
+  .action-report    { padding: 0.8rem; border-radius: 10px; background: rgba(59,130,246,.12); color: var(--blue); font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(59,130,246,.3); cursor: pointer; }
+  .action-report:hover { background: rgba(59,130,246,.2); }
+
+  .explorer-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .explorer-link { font-size: 0.75rem; color: var(--green); text-decoration: none; background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); border-radius: 5px; padding: 0.3rem 0.7rem; }
+  .explorer-link:hover { background: rgba(16,185,129,.15); }
+
+  .disclaimer { background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.2); border-radius: 8px; padding: 0.85rem 1rem; font-size: 0.75rem; line-height: 1.6; color: var(--muted); margin-top: 0.75rem; }
+  .disclaimer strong { color: var(--amber); }
+
+  .cta-pilot { background: rgba(16,185,129,.06); border: 1px solid rgba(16,185,129,.25); border-radius: 10px; padding: 0.9rem 1rem; font-size: 0.8rem; line-height: 1.6; color: var(--muted); margin-top: 0.75rem; text-align: center; }
+  .cta-pilot a { color: var(--green); font-weight: 700; text-decoration: none; }
+
+  .powered { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; margin-top: 1.5rem; }
+  .pw-badge { font-size: 0.62rem; padding: 0.2rem 0.55rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+
+  footer { text-align: center; padding: 2rem 1rem 0; font-size: 0.72rem; color: var(--subtle); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🛡️</span>
+  <div class="wordmark">Clear<span>ifyer</span></div>
+  <div class="claim">Know before you send</div>
+</header>
+
+<div class="demo-banner">
+  🧪 <strong>Demo-Modus</strong> — du kannst zwei vordefinierte Beispieladressen testen (eine unauffällige, eine kritische). Für die Prüfung beliebiger Adressen: <a href="mailto:tino@clearifyer.de" style="color:var(--blue)">Pilot-Zugang anfragen</a>.
+</div>
+
+<div class="card">
+  <div class="card-label">Demo-Adresse auswählen</div>
+  <div class="demo-addr-picker" id="demoAddrPicker">
+    <div class="demo-addr-btn" data-addr="0x71660c4005ba85c37ccec55d0c4493e66fe775d3" data-net="eth" onclick="selectDemoAddr(this)">
+      <div class="demo-addr-label">Beispiel 1 — unauffällige Adresse<span class="demo-addr-tag clean">niedriges Risiko</span></div>
+      <div class="demo-addr-mono">0x71660c4005ba85c37ccec55d0c4493e66fe775d3</div>
+    </div>
+    <div class="demo-addr-btn" data-addr="0xd90e2f925da726b50c4ed8d0fb90ad053324f31b" data-net="eth" onclick="selectDemoAddr(this)">
+      <div class="demo-addr-label">Beispiel 2 — kritische Adresse<span class="demo-addr-tag risky">hohes Risiko</span></div>
+      <div class="demo-addr-mono">0xd90e2f925da726b50c4ed8d0fb90ad053324f31b</div>
+    </div>
+  </div>
+
+  <div class="addr-wrap">
+    <textarea class="addr" id="addr" readonly
+      placeholder="Bitte oben eine Demo-Adresse auswählen"
+      rows="2" autocomplete="off" spellcheck="false"></textarea>
+  </div>
+
+  <div class="ctx-card">
+    <div class="ctx-q">Wie hast du diese Adresse erhalten? (Demo)</div>
+    <div class="ctx-opt" id="ctx-support" onclick="selectCtx('support')">
+      <div class="ctx-radio"></div><span>💬</span>
+      <span>Support schickte sie mir (Telegram, WhatsApp, E-Mail)</span>
+    </div>
+    <div class="ctx-opt" id="ctx-website" onclick="selectCtx('website')">
+      <div class="ctx-radio"></div><span>🌐</span>
+      <span>Offizielle Website oder App</span>
+    </div>
+    <div class="ctx-opt" id="ctx-friend" onclick="selectCtx('friend')">
+      <div class="ctx-radio"></div><span>👤</span>
+      <span>Freund oder Bekannter</span>
+    </div>
+    <div class="ctx-opt" id="ctx-email" onclick="selectCtx('email')">
+      <div class="ctx-radio"></div><span>📧</span>
+      <span>E-Mail oder unbekannte Quelle</span>
+    </div>
+  </div>
+
+  <button class="submit" id="btnSubmit" onclick="runCheck()" disabled>
+    🔍  Demo-Adresse prüfen
+  </button>
+  <div class="hint" id="hint">Demo-Adresse und Quelle auswählen</div>
+</div>
+
+<div class="card" id="result">
+  <div id="result-inner"></div>
+</div>
+
+<div class="powered">
+  <span class="pw-badge">Etherscan</span>
+  <span class="pw-badge">Chainabuse</span>
+  <span class="pw-badge">OFAC SDN</span>
+  <span class="pw-badge">EU-Sanktionen</span>
+  <span class="pw-badge">MistTrack</span>
+  <span class="pw-badge">Claude AI</span>
+  <span class="pw-badge">GDPR-konform</span>
+</div>
+
+<footer>
+  clearifyer.io · &copy; 2026 Alefy GmbH (i.Gr.) · Freiburg im Breisgau<br>
+  Dieses Tool ersetzt keine rechtliche oder finanzielle Beratung. Demo-Version — eingeschränkter Funktionsumfang.
+</footer>
+
+<script>
+// ── Demo-Whitelist: NUR diese zwei Adressen sind in der Demo prüfbar.
+// Die eigentliche Sperre sitzt serverseitig in check.js (demo:true Flag) —
+// dieses Frontend-Gate ist nur für UX (sofortiges Feedback, kein API-Call nötig).
+var DEMO_WHITELIST = [
+  "0x71660c4005ba85c37ccec55d0c4493e66fe775d3",
+  "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b"
+];
+
+var selectedNetwork = 'eth';
+var selectedContext = '';
+var selectedAddr = '';
+var lastResult = null;
+
+function selectDemoAddr(btn) {
+  var btns = document.querySelectorAll('.demo-addr-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  btn.classList.add('active');
+  selectedAddr = btn.dataset.addr;
+  selectedNetwork = btn.dataset.net;
+  var ta = document.getElementById('addr');
+  ta.value = selectedAddr;
+  ta.className = 'addr addr-valid';
+  updateSubmitState();
+}
+
+function selectCtx(val) {
+  var opts = document.querySelectorAll('.ctx-opt');
+  for (var i = 0; i < opts.length; i++) opts[i].classList.remove('active');
+  var el = document.getElementById('ctx-' + val);
+  if (el) el.classList.add('active');
+  selectedContext = val;
+  updateSubmitState();
+}
+
+function updateSubmitState() {
+  var ready = selectedAddr !== '' && selectedContext !== '';
+  document.getElementById('btnSubmit').disabled = !ready;
+  document.getElementById('hint').textContent = !selectedAddr
+    ? 'Demo-Adresse auswählen'
+    : !selectedContext ? 'Bitte Quelle der Adresse auswählen' : '';
+}
+
+function openReport() {
+  if (!lastResult) return;
+  var encoded = encodeURIComponent(JSON.stringify(lastResult));
+  var win = window.open('/report.html?data=' + encoded, '_blank');
+  if (!win) alert('Bitte Pop-ups für clearifyer.netlify.app erlauben.');
+}
+
+async function runCheck() {
+  // Sicherheitsnetz im Frontend — die echte Prüfung erfolgt in check.js
+  if (DEMO_WHITELIST.indexOf(selectedAddr.toLowerCase()) === -1) {
+    alert('Im Demo-Modus sind nur die zwei vorgegebenen Adressen verfügbar.');
+    return;
+  }
+
+  var btn = document.getElementById('btnSubmit');
+  var resultDiv = document.getElementById('result');
+  var inner = document.getElementById('result-inner');
+
+  btn.disabled = true;
+  resultDiv.style.display = 'block';
+  inner.innerHTML = '<div class="loading"><span class="spinner"></span>Analysiere — Blockchain-Daten werden abgerufen…</div>';
+  resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    var res = await fetch('/.netlify/functions/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addr: selectedAddr, network: selectedNetwork, context: selectedContext, amount: '', demo: true })
+    });
+    var data = await res.json();
+    if (data.error === 'demo_restricted') {
+      inner.innerHTML = '<div class="verdict warn"><span class="verdict-icon">🧪</span><div>' + data.message + '</div></div>';
+      btn.disabled = false;
+      return;
+    }
+    if (data.error) throw new Error(data.error);
+    lastResult = data;
+    lastResult.context_answer = selectedContext;
+    renderResult(data);
+  } catch(e) {
+    inner.innerHTML = '<div class="verdict warn"><span class="verdict-icon">⚠️</span><div>Fehler bei der Analyse.<br><small style="font-weight:400;opacity:.7">' + e.message + '</small></div></div>';
+  }
+  btn.disabled = false;
+}
+
+function renderResult(r) {
+  var inner = document.getElementById('result-inner');
+  var score = r.riskScore || 0;
+  var isHigh = score >= 70;
+  var isMid  = score >= 40;
+  var color  = isHigh ? 'var(--red)' : isMid ? 'var(--amber)' : 'var(--green)';
+  var vClass = isHigh ? 'danger' : isMid ? 'warn' : 'ok';
+  var icon   = isHigh ? '🚨' : isMid ? '⚠️' : '✅';
+
+  var findingsHtml = '';
+  var findings = r.findings || [];
+  for (var i = 0; i < findings.length; i++) {
+    findingsHtml += '<li><span class="ftag ' + findings[i].level + '">' + findings[i].label + '</span><span>' + findings[i].text + '</span></li>';
+  }
+
+  var sanctionHtml = '';
+  if (r.sanctioned) {
+    sanctionHtml = '<div style="background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.5);border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:var(--red);font-weight:600;">⛔ SANKTIONSTREFFER: ' + (r.sanctionSource || 'Sanktionsliste') + '<br><span style="font-weight:400;font-size:0.8rem;opacity:.8">Transaktionen mit dieser Adresse sind rechtlich verboten.</span></div>';
+  }
+
+  var sanctionDataHtml = '';
+  if (r.ofac || r.euSanctions) {
+    sanctionDataHtml = '<div class="card-label" style="margin-top:0.5rem">Sanktionslisten</div><div class="data-grid">';
+    if (r.ofac) sanctionDataHtml += '<div class="data-cell"><div class="dc-label">OFAC SDN (USA)</div><div class="dc-value" style="font-size:0.75rem;color:' + (r.ofac.sanctioned ? 'var(--red)' : 'var(--green)') + '">' + (r.ofac.sanctioned ? '⛔ Treffer' : '✅ Kein Treffer') + '</div></div>';
+    if (r.euSanctions) sanctionDataHtml += '<div class="data-cell"><div class="dc-label">EU-Sanktionen</div><div class="dc-value" style="font-size:0.75rem;color:' + (r.euSanctions.sanctioned ? 'var(--red)' : 'var(--green)') + '">' + (r.euSanctions.sanctioned ? '⛔ Treffer' : '✅ Kein Treffer') + '</div></div>';
+    sanctionDataHtml += '</div>';
+  }
+
+  var onChainHtml = '';
+  if (r.onChain && !r.onChain.error && !r.onChain.skipped) {
+    var oc = r.onChain;
+    onChainHtml = '<div class="card-label" style="margin-top:0.5rem">On-Chain Daten (Etherscan)</div><div class="data-grid">';
+    if (oc.balanceEth  != null) onChainHtml += '<div class="data-cell"><div class="dc-label">Kontostand</div><div class="dc-value">' + oc.balanceEth + ' ETH</div></div>';
+    if (oc.txCount     != null) onChainHtml += '<div class="data-cell"><div class="dc-label">Transaktionen</div><div class="dc-value">' + oc.txCount + '</div></div>';
+    if (oc.firstTxDate)         onChainHtml += '<div class="data-cell"><div class="dc-label">Erste TX</div><div class="dc-value">' + oc.firstTxDate + '</div></div>';
+    onChainHtml += '</div>';
+  }
+
+  var chainabuseHtml = '';
+  if (r.chainabuse) {
+    var ca = r.chainabuse;
+    chainabuseHtml = '<div class="card-label" style="margin-top:0.5rem">Chainabuse Datenbank</div><div class="data-grid"><div class="data-cell"><div class="dc-label">Scam-Meldungen</div><div class="dc-value" style="color:' + (ca.reports > 0 ? 'var(--red)' : 'var(--green)') + '">' + ca.reports + ' ' + (ca.reports > 0 ? '⚠️' : '✓') + '</div></div></div>';
+  }
+
+  var misttrackHtml = '';
+  if (r.misttrack && r.misttrack.available) {
+    var mt = r.misttrack;
+    misttrackHtml = '<div class="card-label" style="margin-top:0.5rem">MistTrack AML</div><div class="data-grid"><div class="data-cell"><div class="dc-label">Score</div><div class="dc-value" style="color:' + (mt.risk === 'high' ? 'var(--red)' : mt.risk === 'medium' ? 'var(--amber)' : 'var(--green)') + '">' + (mt.riskScore != null ? mt.riskScore : '–') + '/100</div></div></div>';
+  }
+
+  var displayAddr = r.addr;
+  var explorerLinks = buildExplorerLinks(r.addr, r.network);
+
+  inner.innerHTML =
+    '<div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">' + displayAddr + '</div>' +
+    sanctionHtml +
+    '<div class="score-row"><span>Risiko-Score</span><span class="score-val" style="color:' + color + '">' + score + '/100 · ' + r.riskLevel + '</span></div>' +
+    '<div class="score-track"><div class="score-fill" style="width:' + score + '%;background:' + color + '"></div></div>' +
+    '<div class="verdict ' + vClass + '"><span class="verdict-icon">' + icon + '</span><span>' + r.summary + '</span></div>' +
+    sanctionDataHtml + onChainHtml + chainabuseHtml + misttrackHtml +
+    '<div class="card-label" style="margin-top:0.5rem">Befunde</div>' +
+    '<ul class="findings">' + findingsHtml + '</ul>' +
+    '<div class="reco"><strong>Empfehlung:</strong> ' + r.recommendation + '</div>' +
+    '<div class="actions">' +
+    '<button class="action-report" onclick="openReport()">📄 Compliance-Report herunterladen</button>' +
+    '<button class="action-tertiary" onclick="newCheck()">🔍 Andere Demo-Adresse prüfen</button>' +
+    '</div>' +
+    '<div class="card-label" style="margin-top:0.5rem">Selbst nachprüfen</div>' +
+    '<div class="explorer-links">' + explorerLinks + '</div>' +
+    '<div class="cta-pilot">Das war nur eine von zwei Demo-Adressen. Für die Prüfung <strong>beliebiger</strong> Adressen in Echtzeit: <a href="mailto:tino@clearifyer.de">Pilot-Zugang anfragen →</a></div>' +
+    '<div class="disclaimer">⚠️ <strong>Kein Freifahrtschein.</strong> Diese Prüfung ist eine Entscheidungshilfe. Blockchain-Transaktionen sind unwiderruflich.</div>';
+}
+
+function buildExplorerLinks(addr, network) {
+  var maps = { eth: 'https://etherscan.io/address/' + addr };
+  var html = '';
+  if (maps[network]) html += '<a class="explorer-link" href="' + maps[network] + '" target="_blank" rel="noopener">Block Explorer ↗</a>';
+  html += '<a class="explorer-link" href="https://www.chainabuse.com/address/' + addr + '" target="_blank" rel="noopener">Chainabuse ↗</a>';
+  return html;
+}
+
+function newCheck() {
+  document.getElementById('result').style.display = 'none';
+  document.getElementById('addr').value = '';
+  document.getElementById('addr').className = 'addr';
+  var btns = document.querySelectorAll('.demo-addr-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  var opts = document.querySelectorAll('.ctx-opt');
+  for (var i = 0; i < opts.length; i++) opts[i].classList.remove('active');
+  selectedContext = '';
+  selectedAddr = '';
+  lastResult = null;
+  updateSubmitState();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
