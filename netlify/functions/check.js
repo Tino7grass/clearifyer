@@ -500,8 +500,25 @@ async function checkIknaio(address, network) {
     return { available: false, detail: "Iknaio nicht konfiguriert.", risk: "unknown" };
   }
 
-  const chainMap = { eth: "eth", btc: "btc", trx: "trx", bnb: "eth", matic: "eth" };
-  const currency = chainMap[network] || "eth";
+  // BNB/MATIC NICHT gegen den Ethereum-Entitätsgraphen abfragen.
+  // Live bestätigt (Testlauf): eine BNB-Adresse wurde fälschlich gegen GraphSenses
+  // "eth"-Graph geprüft und bekam Mixer-/Risiko-Labels zugeordnet, die zu einer
+  // strukturell identisch aussehenden, aber chain-fremden Adresse gehören können —
+  // nicht zur tatsächlichen BNB-Chain-Aktivität. Das floss bisher unbemerkt in den
+  // Score ein. Lieber transparent "nicht unterstützt" als ein falsches Ergebnis.
+  if (network === "bnb" || network === "matic") {
+    return {
+      available: false,
+      risk: "unknown",
+      detail: `Iknaio/GraphSense unterstützt ${network.toUpperCase()} aktuell nicht direkt. Eine Abfrage gegen den Ethereum-Graphen würde chain-fremde Treffer liefern und wird daher nicht durchgeführt.`,
+    };
+  }
+
+  const chainMap = { eth: "eth", btc: "btc", trx: "trx" };
+  const currency = chainMap[network] || null;
+  if (!currency) {
+    return { available: false, risk: "unknown", detail: `Iknaio/GraphSense unterstützt ${network} nicht.` };
+  }
 
   const BASE = "https://api.ikna.io";
   const headers = {
@@ -875,11 +892,34 @@ exports.handler = async (event) => {
     const coverageRatio = calcCoverageRatio(dataSourceStatus);
 
     // ── KI-Analyse ───────────────────────────────────────────
-    const rawAiResult = await analyzeWithClaude({
-      addr: address, network, context, amount,
-      onChain, chainabuse, formatValid: formatCheck.valid,
-      ofac, euSanctions, misttrack, iknaio
-    });
+    // Abgesichert: Wenn die KI-Analyse fehlschlägt oder ihr Zeitbudget überschreitet
+    // (z.B. bei sehr aktiven Adressen wie großen Token-Contracts mit riesiger
+    // MistTrack/Iknaio-Datenmenge), darf das NICHT als roher Fehler beim User
+    // landen. Stattdessen: konservativer Fallback mit explizitem Hinweis, dass
+    // die KI-Bewertung fehlte — sicherer Default ist "MITTEL", nicht "GERING".
+    let rawAiResult;
+    let aiAnalysisFailed = false;
+    try {
+      rawAiResult = await analyzeWithClaude({
+        addr: address, network, context, amount,
+        onChain, chainabuse, formatValid: formatCheck.valid,
+        ofac, euSanctions, misttrack, iknaio
+      });
+    } catch (aiErr) {
+      console.error("KI-Analyse fehlgeschlagen:", aiErr.message);
+      aiAnalysisFailed = true;
+      rawAiResult = {
+        riskScore: 50,
+        riskLevel: "MITTEL",
+        summary: "Die automatisierte KI-Risikobewertung konnte für diese Adresse nicht abgeschlossen werden (z.B. wegen sehr hoher Datenmenge oder Zeitüberschreitung).",
+        findings: [{
+          level: "gelb",
+          label: "KI-Analyse fehlgeschlagen",
+          text: `Die KI-gestützte Gesamtbewertung war technisch nicht möglich (${aiErr.message}). Die On-Chain-, Sanktions- und AML-Rohdaten oben sind dennoch vollständig und live geprüft — bitte manuell auswerten oder erneut versuchen.`
+        }],
+        recommendation: "Die automatisierte Gesamtbewertung konnte nicht erstellt werden. Bitte die einzelnen Datenpunkte (Sanktionslisten, On-Chain-Daten, Chainabuse, MistTrack, Iknaio) oben manuell prüfen oder die Anfrage erneut stellen, bevor du dich auf diese Adresse verlässt."
+      };
+    }
 
     // ── Harte Score-Floors: Code-Override, KI-Output ist nur ein Vorschlag ──
     const aiResult = applyScoreFloors({
@@ -888,6 +928,7 @@ exports.handler = async (event) => {
       iknaio, misttrack, context,
       coverageRatio,
     });
+    aiResult.aiAnalysisFailed = aiAnalysisFailed;
 
     // ── Audit-Log schreiben ──────────────────────────────────
     await writeAuditLog({
