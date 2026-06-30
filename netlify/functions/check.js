@@ -55,10 +55,10 @@ function getCacheTTL(riskScore, sanctioned) {
   return 7 * 24 * 60 * 60 * 1000;                     // Clean: 7 Tage
 }
 
-async function getFromCache(address, network) {
+async function getFromCache(address, network, context) {
   try {
     const store = getResultCacheStore();
-    const key   = `${network}:${address.toLowerCase()}`;
+    const key   = `${network}:${address.toLowerCase()}:${context || "none"}`;
     const entry = await store.get(key, { type: "json" });
     if (!entry) return null;
 
@@ -74,13 +74,13 @@ async function getFromCache(address, network) {
   }
 }
 
-async function saveToCache(address, network, result) {
+async function saveToCache(address, network, context, result) {
   try {
     // Sanktionierte Adressen nicht cachen
     if (result.sanctioned) return;
 
     const store = getResultCacheStore();
-    const key   = `${network}:${address.toLowerCase()}`;
+    const key   = `${network}:${address.toLowerCase()}:${context || "none"}`;
     await store.setJSON(key, {
       ...result,
       cachedAt: new Date().toISOString(),
@@ -813,7 +813,7 @@ exports.handler = async (event) => {
     const formatCheck = validateAddress(address, network);
 
     // ── CACHE-LOOKUP (vor allen API-Calls) ──────────────────
-    const cached = await getFromCache(address, network);
+    const cached = await getFromCache(address, network, context);
     if (cached) {
       console.log(`Cache HIT: ${network}:${address}`);
       return {
@@ -923,7 +923,7 @@ exports.handler = async (event) => {
     };
 
     // ── Ergebnis in Cache speichern ──────────────────────────
-    await saveToCache(address, network, result);
+    await saveToCache(address, network, context, result);
 
     return {
       statusCode: 200,
