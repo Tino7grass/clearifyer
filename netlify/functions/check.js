@@ -71,12 +71,18 @@ function getCacheTTL(riskScore, sanctioned) {
   return 7 * 24 * 60 * 60 * 1000;                     // Clean: 7 Tage
 }
 
-// Versionsnummer der Score-/Recommendation-Logik. MUSS bei jeder inhaltlichen
-// Änderung an applyScoreFloors() oder den Floor-Texten hochgezählt werden —
-// sonst liefert der Cache alte, ggf. fehlerhafte Texte/Scores weiter aus,
-// obwohl der Code längst korrigiert wurde (siehe Vorfall: widersprüchlicher
-// Empfehlungstext blieb nach Fix noch 24h im Cache aktiv).
-const SCORE_LOGIC_VERSION = "v2";
+// Versionsnummer der GESAMTEN scoring-relevanten Logik — nicht nur applyScoreFloors().
+// MUSS bei JEDER inhaltlichen Änderung hochgezählt werden, die das Ergebnis für eine
+// bereits geprüfte Adresse verändern würde, also auch:
+//   - checkIknaio() / checkMistTrack() / fetchEtherscan() / etc. (Datenquellen-Logik)
+//   - der Claude-Prompt in analyzeWithClaude()
+//   - applyScoreFloors() und die Floor-Texte
+// Sonst liefert der Cache alte, ggf. fehlerhafte Ergebnisse weiter aus, obwohl der
+// Code längst korrigiert wurde. Bisherige Vorfälle, die genau daran lagen:
+//   v1→v2: widersprüchlicher Empfehlungstext blieb nach Fix im Cache aktiv
+//   v2→v3: BNB/MATIC-Iknaio-Fix (kein Cross-Chain-Query mehr gegen "eth"-Graph)
+//          blieb wirkungslos, weil alte Mixer-Labels noch unter v2 gecacht waren
+const SCORE_LOGIC_VERSION = "v3";
 
 async function getFromCache(address, network, context) {
   try {
