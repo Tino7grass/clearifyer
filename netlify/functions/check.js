@@ -29,6 +29,22 @@ const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY  || "";
 const MISTTRACK_KEY  = process.env.MISTTRACK_API_KEY  || "";
 const IKNAIO_KEY     = process.env.IKNAIO_API_KEY     || "";
 
+// ============================================================
+// FETCH MIT TIMEOUT — verhindert, dass eine einzelne hängende
+// externe API die gesamte Function über das Netlify-Zeitlimit
+// zieht (Vorfall: Function lief 52s, Netlify-Timeout griff,
+// Frontend bekam HTML-Fehlerseite statt JSON zurück).
+// ============================================================
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Cache für Sanktionslisten (1h TTL) ──────────────────────
 let _ofacAddresses = null, _ofacTs = 0;
 let _euAddresses   = null, _euTs   = 0;
@@ -137,7 +153,7 @@ async function resolveENS(input) {
   }
 
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://api.etherscan.io/api?module=account&action=getaddress&ens=${trimmed}&apikey=${ETHERSCAN_KEY}`
     );
     const data = await res.json();
@@ -195,7 +211,7 @@ const OFAC_HARDLIST = new Set([
 async function loadOFAC() {
   if (_ofacAddresses && Date.now() - _ofacTs < CACHE_TTL) return _ofacAddresses;
   try {
-    const res = await fetch("https://www.treasury.gov/ofac/downloads/sdn.csv");
+    const res = await fetchWithTimeout("https://www.treasury.gov/ofac/downloads/sdn.csv", {}, 10000);
     if (!res.ok) {
       _ofacAddresses = new Set(OFAC_HARDLIST);
       _ofacTs = Date.now();
@@ -231,8 +247,9 @@ async function checkOFAC(address) {
 async function loadEU() {
   if (_euAddresses && Date.now() - _euTs < CACHE_TTL) return _euAddresses;
   try {
-    const res = await fetch(
-      "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+    const res = await fetchWithTimeout(
+      "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content",
+      {}, 10000
     );
     if (!res.ok) return new Set();
     const xml = await res.text();
@@ -275,11 +292,11 @@ async function fetchEtherscan(addr, network) {
   try {
     const base = `https://api.etherscan.io/v2/api?chainid=${chainId}&apikey=${ETHERSCAN_KEY}`;
     const [balRes, txAscRes, txDescRes, codeRes, tokenTxRes] = await Promise.all([
-      fetch(`${base}&module=account&action=balance&address=${addr}&tag=latest`),
-      fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=1&sort=asc`),
-      fetch(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=100&sort=desc`),
-      fetch(`${base}&module=proxy&action=eth_getCode&address=${addr}&tag=latest`),
-      fetch(`${base}&module=account&action=tokentx&address=${addr}&page=1&offset=100&sort=desc`)
+      fetchWithTimeout(`${base}&module=account&action=balance&address=${addr}&tag=latest`),
+      fetchWithTimeout(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=1&sort=asc`),
+      fetchWithTimeout(`${base}&module=account&action=txlist&address=${addr}&startblock=0&endblock=latest&page=1&offset=100&sort=desc`),
+      fetchWithTimeout(`${base}&module=proxy&action=eth_getCode&address=${addr}&tag=latest`),
+      fetchWithTimeout(`${base}&module=account&action=tokentx&address=${addr}&page=1&offset=100&sort=desc`)
     ]);
 
     const balData    = await balRes.json();
@@ -337,7 +354,7 @@ async function fetchEtherscan(addr, network) {
 
     if (isContract) {
       try {
-        const srcRes  = await fetch(`${base}&module=contract&action=getsourcecode&address=${addr}`);
+        const srcRes  = await fetchWithTimeout(`${base}&module=contract&action=getsourcecode&address=${addr}`);
         const srcData = await srcRes.json();
         const info    = srcData.result?.[0] || {};
         const verified = info.SourceCode && info.SourceCode !== "";
@@ -366,7 +383,7 @@ async function fetchEtherscan(addr, network) {
 async function fetchChainabuse(addr) {
   if (!CHAINABUSE_KEY) return { reports: 0 };
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://www.chainabuse.com/api/reports/search?address=${encodeURIComponent(addr)}`,
       { headers: { "X-API-Key": CHAINABUSE_KEY } }
     );
@@ -400,8 +417,8 @@ async function checkMistTrack(address, network) {
 
   try {
     const [riskRes, counterpartyRes] = await Promise.all([
-      fetch(`${base}/v3/risk_score?${params}`),
-      fetch(`${base}/v1/address_counterparty?${params}`)
+      fetchWithTimeout(`${base}/v3/risk_score?${params}`),
+      fetchWithTimeout(`${base}/v1/address_counterparty?${params}`)
     ]);
 
     const riskData         = await riskRes.json();
@@ -494,8 +511,8 @@ async function checkIknaio(address, network) {
 
   try {
     const [addrRes, tagsRes] = await Promise.all([
-      fetch(`${BASE}/${currency}/addresses/${address}`, { headers }),
-      fetch(`${BASE}/${currency}/addresses/${address}/tags`, { headers })
+      fetchWithTimeout(`${BASE}/${currency}/addresses/${address}`, { headers }),
+      fetchWithTimeout(`${BASE}/${currency}/addresses/${address}/tags`, { headers })
     ]);
 
     let addrData = null;
@@ -519,7 +536,7 @@ async function checkIknaio(address, network) {
     const entityId = addrData?.entity?.entity;
     if (entityId) {
       try {
-        const neighborRes = await fetch(
+        const neighborRes = await fetchWithTimeout(
           `${BASE}/${currency}/entities/${entityId}/neighbors?direction=both&include_labels=true&pagesize=20`,
           { headers }
         );
@@ -767,7 +784,7 @@ async function analyzeWithClaude({ addr, network, context, amount, onChain, chai
 
   const prompt = `Du bist ein Krypto-Sicherheitsanalyst. Antworte NUR als valides JSON ohne Backticks oder Markdown.\n\nADRESSE: ${addr}\nNETZWERK: ${networkNames[network] || network}\nFORMAT GÜLTIG: ${formatValid}\nBETRAG: ${amount || "nicht angegeben"}\nKONTEXT: ${context || "nicht angegeben"}\n\nON-CHAIN DATEN:\n- Balance: ${onChain?.balanceEth ?? "n/a"}\n- Transaktionen gesamt: ${onChain?.txCount ?? "n/a"}\n- Erste TX: ${onChain?.firstTxDate ?? "keine"}\n- Nur Empfang: ${onChain?.receivesOnly ?? "unbekannt"}\n- Velocity (24h): ${onChain?.velocity?.detail ?? "n/a"}\n- Contract: ${onChain?.contract?.detail ?? "n/a"}\n- ERC20-Token-Transfers: ${onChain?.tokenTransfers?.available ? `${onChain.tokenTransfers.totalCount} Transfers — ${Object.entries(onChain.tokenTransfers.byToken || {}).map(([sym, d]) => `${sym}: ${d.count}x, zuletzt ${d.lastTxDate}`).join("; ") || "keine"}` : "nicht verfügbar"}\n\nSANKTIONEN:\n- OFAC (USA): ${ofac?.detail ?? "nicht geprüft"}\n- EU-Sanktionen: ${euSanctions?.detail ?? "nicht geprüft"}\n\nAML-DATENBANKEN:\n- Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}\n- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}\n- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}\n- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}\n\nGRAPHSENSE / IKNAIO ATTRIBUTION:\n- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}\n- Bewertung: ${iknaio?.detail ?? "n/a"}\n- Labels: ${iknaio?.labels?.join(", ") || "keine"}\n- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}\n- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}\n- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}\n- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}\n\nWICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.\nFalls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.\n\nAntworte exakt in diesem JSON-Format:\n{"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -779,7 +796,7 @@ async function analyzeWithClaude({ addr, network, context, amount, onChain, chai
       max_tokens: 2000,
       messages: [{ role: "user", content: prompt }]
     })
-  });
+  }, 15000); // 15s Budget — die KI-Analyse braucht mehr Zeit als ein einfacher Datenbank-Call
 
   if (!res.ok) {
     const errText = await res.text();
