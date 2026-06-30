@@ -154,13 +154,88 @@
 </style>
 </head>
 <body>
+<!--
+  PASSWORT-GATE FÜR app.html (Pilot-Version)
+  ============================================
+  Einfügen direkt nach <body> in app.html, NOCH VOR dem restlichen Content.
+  Der eigentliche Seiteninhalt sollte in einen Container z.B. <div id="pilotContent" style="display:none">...</div>
+  gepackt werden, damit er erst nach korrekter Passworteingabe sichtbar wird.
 
+  WICHTIG: Das ist ein einfaches Frontend-Gate gegen "zufälliges Finden der URL",
+  KEIN echter Sicherheitsmechanismus. Es verhindert nicht, dass jemand mit
+  Entwickler-Tools den Quelltext einsieht. Für echten Schutz müsste die
+  Pilot-App serverseitig (z.B. via Netlify Identity oder Basic Auth auf
+  Function-Ebene) abgesichert werden. Für den aktuellen Zweck (Outreach-Kontrolle,
+  kein öffentlicher Vollzugriff über zufällige URL-Funde) reicht dieses Gate aus.
+-->
+
+<div id="pilotGate" style="
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; background: #0a0f1e; color: #f0f4ff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 1rem;">
+
+  <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🛡️</div>
+  <div style="font-size: 1.6rem; font-weight: 800; margin-bottom: 0.3rem;">
+    Clear<span style="color:#10b981">ifyer</span> Pilot
+  </div>
+  <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.18em; color: #6b7fa8; margin-bottom: 2rem;">
+    Zugang nur für autorisierte Tester
+  </div>
+
+  <input type="password" id="pilotPwInput" placeholder="Zugangscode eingeben"
+    style="width: 100%; max-width: 320px; background: #161f3a; border: 1.5px solid #253352;
+    border-radius: 10px; color: #f0f4ff; font-size: 0.9rem; padding: 0.8rem 1rem;
+    outline: none; margin-bottom: 0.75rem; text-align: center;"
+    onkeydown="if(event.key==='Enter') checkPilotPassword()">
+
+  <button onclick="checkPilotPassword()" style="width: 100%; max-width: 320px;
+    background: #10b981; color: #000; border: none; border-radius: 10px;
+    font-size: 0.9rem; font-weight: 800; padding: 0.8rem; cursor: pointer;">
+    Zugang freischalten
+  </button>
+
+  <div id="pilotPwError" style="color: #ef4444; font-size: 0.78rem; margin-top: 0.75rem; display: none;">
+    Falscher Zugangscode. Bitte erneut versuchen.
+  </div>
+
+  <div style="font-size: 0.7rem; color: #3a4f7a; margin-top: 2rem; text-align: center; max-width: 320px;">
+    Kein Zugang? Kontaktiere tino@clearifyer.de für einen Pilot-Termin.
+  </div>
+</div>
+
+<script>
+// Passwort hier zentral pflegen — bei Bedarf für einzelne Piloten rotieren.
+// NICHT als echtes Security-Feature behandeln, siehe Hinweis oben im Kommentar.
+var PILOT_PASSWORD = "clearifyer-pilot-2026"; // z.B. "clearifyer-pilot-2026"
+
+function checkPilotPassword() {
+  var input = document.getElementById('pilotPwInput').value;
+  if (input === PILOT_PASSWORD) {
+    sessionStorage.setItem('clearifyer_auth', 'true');
+    unlockPilotContent();
+  } else {
+    document.getElementById('pilotPwError').style.display = 'block';
+  }
+}
+
+function unlockPilotContent() {
+  document.getElementById('pilotGate').style.display = 'none';
+  var content = document.getElementById('pilotContent');
+  if (content) content.style.display = 'block';
+}
+
+// Bereits in dieser Browser-Session freigeschaltet? -> Gate überspringen
+if (sessionStorage.getItem('clearifyer_auth') === 'true') {
+  document.addEventListener('DOMContentLoaded', unlockPilotContent);
+}
+</script>
 <header>
   <span class="logo">🛡️</span>
   <div class="wordmark">Clear<span>ifyer</span></div>
   <div class="claim">Know before you send</div>
 </header>
-
+<div id="pilotContent" style="display:none">
+  
 <div class="card">
   <div class="card-label">Empfänger-Adresse prüfen</div>
   <div class="addr-wrap">
@@ -505,5 +580,6 @@ function newCheck() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 </script>
+ </div> 
 </body>
 </html>
