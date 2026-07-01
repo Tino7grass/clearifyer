@@ -84,7 +84,7 @@ function getCacheTTL(riskScore, sanctioned) {
 //          blieb wirkungslos, weil alte Mixer-Labels noch unter v2 gecacht waren
 //   v3→v4: ERC20-Token-Liste im Prompt auf Top 10 begrenzt (Performance-Fix für
 //          token-reiche Adressen, die sonst die KI-Analyse ins Timeout liefen)
-const SCORE_LOGIC_VERSION = "v4";
+const SCORE_LOGIC_VERSION = "v5";
 
 async function getFromCache(address, network, context) {
   try {
@@ -817,8 +817,8 @@ async function analyzeWithClaude({ addr, network, context, amount, onChain, chai
 
   const prompt = `Du bist ein Krypto-Sicherheitsanalyst. Antworte NUR als valides JSON ohne Backticks oder Markdown.\n\nADRESSE: ${addr}\nNETZWERK: ${networkNames[network] || network}\nFORMAT GÜLTIG: ${formatValid}\nBETRAG: ${amount || "nicht angegeben"}\nKONTEXT: ${context || "nicht angegeben"}\n\nON-CHAIN DATEN:\n- Balance: ${onChain?.balanceEth ?? "n/a"}\n- Transaktionen gesamt: ${onChain?.txCount ?? "n/a"}\n- Erste TX: ${onChain?.firstTxDate ?? "keine"}\n- Nur Empfang: ${onChain?.receivesOnly ?? "unbekannt"}\n- Velocity (24h): ${onChain?.velocity?.detail ?? "n/a"}\n- Contract: ${onChain?.contract?.detail ?? "n/a"}\n- ERC20-Token-Transfers: ${onChain?.tokenTransfers?.available ? (() => {
         const entries = Object.entries(onChain.tokenTransfers.byToken || {}).sort((a, b) => b[1].count - a[1].count);
-        const top = entries.slice(0, 10).map(([sym, d]) => `${sym}: ${d.count}x, zuletzt ${d.lastTxDate}`).join("; ");
-        const rest = entries.length > 10 ? ` (+${entries.length - 10} weitere Token, hier nicht im Detail aufgeführt)` : "";
+        const top = entries.slice(0, 3).map(([sym, d]) => `${sym}: ${d.count}x, zuletzt ${d.lastTxDate}`).join("; ");
+        const rest = entries.length > 3 ? ` (+${entries.length - 3} weitere Token, hier nicht im Detail aufgeführt)` : "";
         return `${onChain.tokenTransfers.totalCount} Transfers über ${entries.length} verschiedene Token — ${top || "keine"}${rest}`;
       })() : "nicht verfügbar"}\n\nSANKTIONEN:\n- OFAC (USA): ${ofac?.detail ?? "nicht geprüft"}\n- EU-Sanktionen: ${euSanctions?.detail ?? "nicht geprüft"}\n\nAML-DATENBANKEN:\n- Chainabuse Meldungen: ${chainabuse?.reports ?? 0} ${chainabuse?.categories?.length ? "(" + chainabuse.categories.join(", ") + ")" : ""}\n- MistTrack Score: ${misttrack?.riskScore ?? "n/a"} | ${misttrack?.detail ?? "nicht geprüft"}\n- MistTrack Gegenparteien: ${misttrack?.counterpartyList?.slice(0,3).map(c => `${c.name} ${c.percent?.toFixed(0)}%`).join(", ") || "keine"}\n- MistTrack Risiko-Gegenparteien: ${misttrack?.flaggedCounterparties?.join(", ") || "keine"}\n\nGRAPHSENSE / IKNAIO ATTRIBUTION:\n- Status: ${iknaio?.available ? "verfügbar" : "nicht verfügbar"}\n- Bewertung: ${iknaio?.detail ?? "n/a"}\n- Labels: ${iknaio?.labels?.join(", ") || "keine"}\n- Konzepte: ${iknaio?.concepts?.join(", ") || "keine"}\n- Missbrauchsmeldungen: ${iknaio?.abuses?.join(", ") || "keine"}\n- Entität: ${iknaio?.entity ? `Cluster mit ${iknaio.entity.noAddresses} Adressen` : "unbekannt"}\n- Auffällige Nachbar-Entitäten: ${iknaio?.neighborFindings?.length > 0 ? `${iknaio.neighborFindings.length} gefunden — ${iknaio.neighborFindings.slice(0,3).map(n => n.abuses[0] || n.labels[0] || "unbekannt").join(", ")}` : "keine"}\n\nWICHTIG: Falls OFAC oder EU-Sanktionen einen Treffer melden, muss riskScore=100 und riskLevel="KRITISCH" sein.\nFalls Iknaio Missbrauch (abuses) meldet, erhöhe den riskScore entsprechend stark.\n\nAntworte exakt in diesem JSON-Format:\n{"riskScore":75,"riskLevel":"HOCH","summary":"Kurze Zusammenfassung","findings":[{"level":"rot","label":"Label","text":"Erklaerung"}],"recommendation":"Empfehlung auf Deutsch"}`;
 
