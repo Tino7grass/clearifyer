@@ -177,7 +177,7 @@ async function resolveENS(input) {
 // DEMO-WHITELIST — nur diese Adressen sind im Demo-Modus prüfbar
 // ============================================================
 const DEMO_WHITELIST = new Set([
-  "0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae",
+  "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
   "0xd90e2f925da726b50c4ed8d0fb90ad053324f31b",
 ]);
 
