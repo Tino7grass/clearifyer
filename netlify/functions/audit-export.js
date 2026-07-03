@@ -34,7 +34,7 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ message: "Keine Einträge.", count: 0 }) };
     }
 
-    const csvHeader = ["ID","Zeitstempel","Adresse","ENS-Name","Blockchain","Kontext","Risiko-Score","Risiko-Level","Sanktioniert","Sanktions-Quelle","Quellen","Dauer (ms)"].join(";");
+    const csvHeader = ["ID","Zeitstempel","Adresse","ENS-Name","Blockchain","Kontext","Risiko-Score","Risiko-Level","Sanktioniert","Sanktions-Quelle","Decision Code","Reason Codes","Kritischer Quellenausfall","Quellen","Dauer (ms)"].join(";");
     const csvRows = entries.map(e => [
       e.id || "",
       e.timestamp || "",
@@ -46,6 +46,9 @@ exports.handler = async (event) => {
       e.risk_level || "",
       e.sanctioned ? "JA" : "NEIN",
       e.sanction_source || "",
+      e.decision_code || "",
+      '"' + (e.reason_codes || []).join(", ") + '"',
+      e.critical_source_outage ? "JA" : "NEIN",
       (e.sources_checked || []).join(", "),
       e.duration_ms || ""
     ].join(";"));
