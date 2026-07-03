@@ -46,8 +46,12 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 }
 
 // ── Cache für Sanktionslisten (1h TTL) ──────────────────────
-let _ofacAddresses = null, _ofacTs = 0;
-let _euAddresses   = null, _euTs   = 0;
+// _ofacLive / _euLive (GA-02): true = letzter Ladevorgang war ein erfolgreicher
+// Live-Abgleich; false = es wird auf einen Fallback (OFAC) bzw. eine leere/veraltete
+// Menge (EU) zurückgegriffen. Wird von deriveDecisionCode() ausgewertet, um bei
+// Ausfall der Sanktionsquellen ein automatisches ALLOW zu verhindern.
+let _ofacAddresses = null, _ofacTs = 0, _ofacLive = false;
+let _euAddresses   = null, _euTs   = 0, _euLive   = false;
 const CACHE_TTL = 60 * 60 * 1000;
 
 // ============================================================
@@ -84,7 +88,12 @@ function getCacheTTL(riskScore, sanctioned) {
 //          blieb wirkungslos, weil alte Mixer-Labels noch unter v2 gecacht waren
 //   v3→v4: ERC20-Token-Liste im Prompt auf Top 10 begrenzt (Performance-Fix für
 //          token-reiche Adressen, die sonst die KI-Analyse ins Timeout liefen)
-const SCORE_LOGIC_VERSION = "v5";
+//   v4→v5: (vorherige Änderung, Grund nicht rückwirkend dokumentiert)
+//   v5→v6: GA-02/GA-03 — OFAC/EU melden jetzt live:false statt stillem Fallback;
+//          criticalSourceOutage + decisionCode/reasonCodes neu im Ergebnis.
+//          Ohne diesen Versionssprung würden bereits gecachte Alt-Ergebnisse (ohne
+//          decisionCode, mit dem alten EU-Ausfall-Bug) bis zu 7 Tage weiter ausgeliefert.
+const SCORE_LOGIC_VERSION = "v6";
 
 async function getFromCache(address, network, context) {
   try {
@@ -225,34 +234,52 @@ const OFAC_HARDLIST = new Set([
 ].map(a => a.toLowerCase()));
 
 async function loadOFAC() {
-  if (_ofacAddresses && Date.now() - _ofacTs < CACHE_TTL) return _ofacAddresses;
+  // WICHTIG (GA-02): _ofacLive markiert, ob die zuletzt geladene Liste aus einem
+  // erfolgreichen Live-Abgleich stammt oder aus dem statischen OFAC_HARDLIST-Fallback.
+  // Diese Unterscheidung ist scharf zu halten — sie entscheidet später, ob ein
+  // "kein Treffer"-Ergebnis als geprüft ("clear") oder als ungeprüft ("unknown")
+  // gilt (siehe checkOFAC / deriveDecisionCode).
+  if (_ofacAddresses && Date.now() - _ofacTs < CACHE_TTL) {
+    return { addresses: _ofacAddresses, live: _ofacLive };
+  }
   try {
     const res = await fetchWithTimeout("https://www.treasury.gov/ofac/downloads/sdn.csv", {}, 10000);
     if (!res.ok) {
       _ofacAddresses = new Set(OFAC_HARDLIST);
       _ofacTs = Date.now();
-      return _ofacAddresses;
+      _ofacLive = false;
+      return { addresses: _ofacAddresses, live: false };
     }
     const text = await res.text();
     const matches = text.match(/0x[a-fA-F0-9]{40}/gi) || [];
     const fromCsv = new Set(matches.map(a => a.toLowerCase()));
     _ofacAddresses = new Set([...fromCsv, ...OFAC_HARDLIST]);
     _ofacTs = Date.now();
-    return _ofacAddresses;
+    _ofacLive = true;
+    return { addresses: _ofacAddresses, live: true };
   } catch {
-    return new Set(OFAC_HARDLIST);
+    _ofacAddresses = new Set(OFAC_HARDLIST);
+    _ofacTs = Date.now();
+    _ofacLive = false;
+    return { addresses: _ofacAddresses, live: false };
   }
 }
 
 async function checkOFAC(address) {
-  const set = await loadOFAC();
+  const { addresses: set, live } = await loadOFAC();
   const sanctioned = set.has(address.toLowerCase());
   return {
     sanctioned,
-    risk: sanctioned ? "critical" : "clear",
+    live,
+    // GA-02: Ohne Live-Abgleich ist "kein Treffer" kein "clear", sondern "unknown" —
+    // die Kernliste (OFAC_HARDLIST) deckt nur bekannte Altfälle ab, nicht die
+    // aktuelle vollständige SDN-Liste.
+    risk: sanctioned ? "critical" : (live ? "clear" : "unknown"),
     detail: sanctioned
       ? "⛔ Adresse steht auf der US-Sanktionsliste (OFAC SDN). Transaktion rechtlich verboten."
-      : "✅ Nicht auf der OFAC SDN-Liste gefunden."
+      : live
+        ? "✅ Nicht auf der OFAC SDN-Liste gefunden."
+        : "⚠️ OFAC-Live-Abgleich fehlgeschlagen — Prüfung erfolgte nur gegen die zuletzt bekannte Kernliste (Fallback), nicht gegen die aktuelle vollständige SDN-Liste."
   };
 }
 
@@ -261,30 +288,52 @@ async function checkOFAC(address) {
 // ============================================================
 
 async function loadEU() {
-  if (_euAddresses && Date.now() - _euTs < CACHE_TTL) return _euAddresses;
+  // GA-02 FIX: Vorher gab ein fehlgeschlagener Live-Abgleich (res.ok===false ODER
+  // Netzwerkfehler) einen LEEREN Set zurück — ohne jede Kennzeichnung. Eine tatsächlich
+  // sanktionierte Adresse wäre in diesem Fall als "sauber" durchgelaufen, weil es
+  // (anders als bei OFAC) keine statische Fallback-Liste gibt. Fix: Ausfall wird
+  // explizit signalisiert (live:false); die zuletzt bekannte Menge wird nur als
+  // Fallback verwendet, niemals stillschweigend als vollständige Prüfung behandelt.
+  if (_euAddresses && Date.now() - _euTs < CACHE_TTL) {
+    return { addresses: _euAddresses, live: _euLive };
+  }
   try {
     const res = await fetchWithTimeout(
       "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content",
       {}, 10000
     );
-    if (!res.ok) return new Set();
+    if (!res.ok) {
+      _euTs = Date.now();
+      _euLive = false;
+      return { addresses: _euAddresses || new Set(), live: false };
+    }
     const xml = await res.text();
     const matches = xml.match(/0x[a-fA-F0-9]{40}/g) || [];
     _euAddresses = new Set(matches.map(a => a.toLowerCase()));
     _euTs = Date.now();
-    return _euAddresses;
-  } catch { return new Set(); }
+    _euLive = true;
+    return { addresses: _euAddresses, live: true };
+  } catch {
+    _euTs = Date.now();
+    _euLive = false;
+    return { addresses: _euAddresses || new Set(), live: false };
+  }
 }
 
 async function checkEUSanctions(address) {
-  const set = await loadEU();
+  const { addresses: set, live } = await loadEU();
   const sanctioned = set.has(address.toLowerCase());
   return {
     sanctioned,
-    risk: sanctioned ? "critical" : "clear",
+    live,
+    // GA-02: kein Live-Abgleich ⇒ "unknown", NICHT "clear" — dies ist die
+    // Kernkorrektur, die ein automatisches Grün bei EU-Feed-Ausfall verhindert.
+    risk: sanctioned ? "critical" : (live ? "clear" : "unknown"),
     detail: sanctioned
       ? "⛔ Adresse steht auf der EU-Sanktionsliste. Transaktion verstößt gegen EU-Recht."
-      : "✅ Nicht auf der EU-Sanktionsliste gefunden."
+      : live
+        ? "✅ Nicht auf der EU-Sanktionsliste gefunden."
+        : "⚠️ EU-Sanktions-Livequelle nicht erreichbar — kein aktueller Abgleich möglich. Diese Prüfung gilt als NICHT durchgeführt, nicht als \"sauber\"."
   };
 }
 
@@ -677,12 +726,14 @@ const CHAIN_SOURCE_SUPPORT = {
   sol:   { etherscan: false, misttrack: false, iknaio: false }, // aktuell von KEINER Quelle wirklich unterstützt
 };
 
-function buildDataSourceStatus({ network, onChain, chainabuse, misttrack, iknaio }) {
+function buildDataSourceStatus({ network, onChain, chainabuse, misttrack, iknaio, ofac, euSanctions }) {
   const support = CHAIN_SOURCE_SUPPORT[network] || { etherscan: false, misttrack: false, iknaio: false };
 
   return {
-    ofac: { requested: true, responded: true, usedInScore: true },
-    euSanctions: { requested: true, responded: true, usedInScore: true },
+    // GA-02: responded/usedInScore spiegeln jetzt den echten Live-Status wider
+    // (ofac.live / euSanctions.live), statt fest auf true zu stehen.
+    ofac: { requested: true, responded: ofac.live === true, usedInScore: ofac.live === true },
+    euSanctions: { requested: true, responded: euSanctions.live === true, usedInScore: euSanctions.live === true },
     chainabuse: {
       requested: !!CHAINABUSE_KEY,
       responded: !!CHAINABUSE_KEY && chainabuse?.reports !== undefined,
@@ -783,6 +834,86 @@ function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, mist
     appliedFloors,
     scoreOverridden: appliedFloors.length > 0,
   };
+}
+
+// ============================================================
+// 8d. DECISION CODE (GA-03)
+// Policy before score: der Score/Level aus applyScoreFloors() ist ein Zwischen-
+// ergebnis, keine Handlungsanweisung. deriveDecisionCode() bildet ihn zusammen mit
+// den harten Kontrollsignalen (Sanktionen, kritischer Quellenausfall, Kontext-Flags)
+// auf einen der sechs Entscheidungszustände aus der Phasen-Spezifikation V1.0 ab:
+// ALLOW / ASK / HOLD / MANUAL_REVIEW / REJECT / ERROR.
+//
+// Reihenfolge = Priorität. Die erste zutreffende Regel entscheidet; alle danach
+// greifenden Bedingungen werden trotzdem als zusätzliche reasonCodes gesammelt,
+// damit der Decision Trail vollständig bleibt, auch wenn sie das Ergebnis nicht
+// mehr verändern.
+//
+// MUSS vor saveToCache() aufgerufen werden — das Ergebnis wird Teil des gecachten
+// Objekts und muss daher feststehen, bevor der Cache-Eintrag geschrieben wird.
+// ============================================================
+
+function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio }) {
+  const reasonCodes = [];
+  let decisionCode = null;
+
+  const isSupportLeakContext = SUPPORT_LEAK_CONTEXT_VALUES.has(context);
+  const level = aiResult.riskLevel;
+
+  // Alle zutreffenden Signale sammeln (für Evidence/Reason-Codes),
+  // unabhängig davon, welches am Ende die Entscheidung bestimmt.
+  if (isSanctioned)              reasonCodes.push("SANCTIONS_HIT");
+  if (criticalSourceOutage)      reasonCodes.push("CRITICAL_SOURCE_UNAVAILABLE");
+  if (isSupportLeakContext)      reasonCodes.push("CONTEXT_SUPPORT_IMPERSONATION");
+  if (level === "KRITISCH")      reasonCodes.push("RISK_CRITICAL");
+  if (level === "HOCH")          reasonCodes.push("RISK_HIGH");
+  if (level === "MITTEL")        reasonCodes.push("RISK_MEDIUM");
+  if (aiAnalysisFailed)          reasonCodes.push("AI_ANALYSIS_UNAVAILABLE");
+  if (coverageRatio < 0.6)       reasonCodes.push("DATA_COVERAGE_LOW");
+
+  // Priorität 1: Sanktionstreffer — härtester Stopp, keine Ermessensfrage.
+  if (isSanctioned) {
+    decisionCode = "REJECT";
+  }
+  // Priorität 2: kritischer Quellenausfall — Fail-safe. Ein Ausfall der
+  // Sanktionsprüfung darf NIE automatisch zu ALLOW führen (GA-02).
+  else if (criticalSourceOutage) {
+    decisionCode = "ERROR";
+  }
+  // Priorität 3: Kontext-Fraud-Signal (z.B. "Support gab mir die Adresse").
+  else if (isSupportLeakContext) {
+    decisionCode = "MANUAL_REVIEW";
+  }
+  // Priorität 4: Score-Floor hat KRITISCH erzwungen, ohne dass isSanctioned
+  // gesetzt war (sollte praktisch nicht vorkommen — Sicherheitsnetz).
+  else if (level === "KRITISCH") {
+    decisionCode = "REJECT";
+  }
+  // Priorität 5: Hohes Risiko ohne harten Trigger → Vier-Augen-Fall.
+  else if (level === "HOCH") {
+    decisionCode = "MANUAL_REVIEW";
+  }
+  // Priorität 6: KI-Gesamtbewertung nicht verfügbar → keine automatische
+  // Freigabe; Rohdaten liegen vor, aber ein Mensch muss sie einordnen.
+  else if (aiAnalysisFailed) {
+    decisionCode = "HOLD";
+  }
+  // Priorität 7: Datenabdeckung zu niedrig, um ein Grün zu rechtfertigen,
+  // auch wenn kein einzelnes Signal kritisch war.
+  else if (coverageRatio < 0.6) {
+    decisionCode = "ASK";
+  }
+  // Priorität 8: mittleres Risiko ohne harten Trigger → zusätzliche
+  // Bestätigung/Information sinnvoll, aber kein Case nötig.
+  else if (level === "MITTEL") {
+    decisionCode = "ASK";
+  }
+  // Kein Trigger, volle Datenabdeckung, geringes Risiko.
+  else {
+    decisionCode = "ALLOW";
+  }
+
+  return { decisionCode, reasonCodes };
 }
 
 // ============================================================
@@ -923,8 +1054,15 @@ if (demo === true) {
     const sanctionSource = ofac.sanctioned ? "OFAC SDN (US Treasury)" : euSanctions.sanctioned ? "EU Financial Sanctions File" : null;
 
     // ── Datenquellen-Status & Coverage (vor der KI-Analyse, damit transparent ist was überhaupt vorlag) ──
-    const dataSourceStatus = buildDataSourceStatus({ network, onChain, chainabuse, misttrack, iknaio });
+    const dataSourceStatus = buildDataSourceStatus({ network, onChain, chainabuse, misttrack, iknaio, ofac, euSanctions });
     const coverageRatio = calcCoverageRatio(dataSourceStatus);
+
+    // ── GA-02: kritischer Quellenausfall ─────────────────────
+    // OFAC und EU-Sanktionen sind die einzigen Quellen, deren Ausfall NIE zu einem
+    // automatischen Grün führen darf (rechtliche Pflichtprüfung, keine Ermessensfrage).
+    // Andere Quellen (Iknaio, MistTrack, Etherscan) fließen bereits über coverageRatio
+    // in die Entscheidung ein — das reicht für sie, weil sie keine harte Sperrpflicht sind.
+    const criticalSourceOutage = ofac.live !== true || euSanctions.live !== true;
 
     // ── KI-Analyse ───────────────────────────────────────────
     // Abgesichert: Wenn die KI-Analyse fehlschlägt oder ihr Zeitbudget überschreitet
@@ -965,6 +1103,16 @@ if (demo === true) {
     });
     aiResult.aiAnalysisFailed = aiAnalysisFailed;
 
+    // ── GA-03: Decision Code ableiten ─────────────────────────
+    // MUSS hier stehen: nach den Score-Floors (damit riskLevel final ist),
+    // aber vor writeAuditLog() und vor der result-Zusammenstellung/saveToCache()
+    // (damit sowohl Audit-Log als auch Cache-Eintrag den Decision Code enthalten
+    // und nicht aus dem Score nachträglich rekonstruiert werden müssen).
+    const { decisionCode, reasonCodes } = deriveDecisionCode({
+      isSanctioned, criticalSourceOutage, context,
+      aiResult, aiAnalysisFailed, coverageRatio,
+    });
+
     // ── Audit-Log schreiben ──────────────────────────────────
     await writeAuditLog({
       address,
@@ -978,6 +1126,12 @@ if (demo === true) {
       applied_floors: aiResult.appliedFloors,
       sanctioned: isSanctioned,
       sanction_source: sanctionSource,
+      // GA-02/GA-03: Quellenausfall und resultierender Decision Code gehören ins
+      // Audit-Log — sonst ist im Nachhinein nicht rekonstruierbar, ob ein ERROR/HOLD
+      // durch Risiko oder durch einen Ausfall der Sanktionsprüfung ausgelöst wurde.
+      critical_source_outage: criticalSourceOutage,
+      decision_code: decisionCode,
+      reason_codes: reasonCodes,
       iknaio_risk: iknaio.risk,
       iknaio_labels: iknaio.labels || [],
       iknaio_neighbors_flagged: (iknaio.neighborFindings || []).length,
@@ -1019,6 +1173,13 @@ if (demo === true) {
       sanctionSource,
       dataSourceStatus,
       coverageRatio,
+      criticalSourceOutage,
+      // GA-03: decisionCode/reasonCodes sind Teil von "result" und werden damit
+      // automatisch von saveToCache() persistiert — ein Cache-HIT liefert denselben
+      // Decision Code zurück wie die ursprüngliche Live-Prüfung, ohne ihn erneut
+      // berechnen zu müssen.
+      decisionCode,
+      reasonCodes,
       checkedAt: new Date().toLocaleDateString("de-DE"),
       ...aiResult,
       vasp: lookupVASP(address),
@@ -1047,3 +1208,4 @@ exports.applyScoreFloors = applyScoreFloors;
 exports.buildDataSourceStatus = buildDataSourceStatus;
 exports.calcCoverageRatio = calcCoverageRatio;
 exports.CHAIN_SOURCE_SUPPORT = CHAIN_SOURCE_SUPPORT;
+exports.deriveDecisionCode = deriveDecisionCode;
