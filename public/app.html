@@ -423,6 +423,28 @@ function renderResult(r) {
     findingsHtml += '<li><span class="ftag ' + findings[i].level + '">' + findings[i].label + '</span><span>' + findings[i].text + '</span></li>';
   }
 
+  // GA-03: Decision-Code-Badge — steht bewusst vor dem Score, weil die
+  // Handlungsentscheidung (ALLOW/ASK/HOLD/MANUAL_REVIEW/REJECT/ERROR) das eigentliche
+  // Produktergebnis ist ("Policy before score"). Fallback nur zur Absicherung, falls
+  // ein sehr alter Cache-Eintrag noch kein decisionCode-Feld hat.
+  var decisionMeta = {
+    ALLOW:         { label: 'ALLOW · Freigabe nach Kundenpolicy möglich', color: 'var(--green)', bg: 'rgba(34,197,94,.10)',  border: 'rgba(34,197,94,.4)',  icon: '✅' },
+    ASK:           { label: 'ASK · Zusatzinformation erforderlich',       color: 'var(--amber)', bg: 'rgba(245,158,11,.10)', border: 'rgba(245,158,11,.4)', icon: '❓' },
+    HOLD:          { label: 'HOLD · Vorübergehend angehalten',            color: 'var(--amber)', bg: 'rgba(245,158,11,.10)', border: 'rgba(245,158,11,.4)', icon: '⏸️' },
+    MANUAL_REVIEW: { label: 'MANUAL REVIEW · Vier-Augen-Fall',            color: 'var(--amber)', bg: 'rgba(245,158,11,.10)', border: 'rgba(245,158,11,.4)', icon: '🔍' },
+    REJECT:        { label: 'REJECT · Keine Freigabe',                    color: 'var(--red)',   bg: 'rgba(239,68,68,.12)',  border: 'rgba(239,68,68,.5)',  icon: '⛔' },
+    ERROR:         { label: 'ERROR · Kritischer Datenquellenausfall',     color: 'var(--red)',   bg: 'rgba(239,68,68,.12)',  border: 'rgba(239,68,68,.5)',  icon: '🚫' },
+  };
+  var decisionHtml = '';
+  if (r.decisionCode && decisionMeta[r.decisionCode]) {
+    var dm = decisionMeta[r.decisionCode];
+    var reasonsText = (r.reasonCodes && r.reasonCodes.length) ? r.reasonCodes.join(' · ') : '';
+    decisionHtml = '<div style="background:' + dm.bg + ';border:1.5px solid ' + dm.border + ';border-radius:10px;padding:0.9rem 1rem;margin-bottom:1rem;">' +
+      '<div style="font-size:0.95rem;font-weight:700;color:' + dm.color + '">' + dm.icon + ' ' + dm.label + '</div>' +
+      (reasonsText ? '<div style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem;font-family:var(--mono)">' + reasonsText + '</div>' : '') +
+      '</div>';
+  }
+
   // Sanktions-Banner
   var sanctionHtml = '';
   if (r.sanctioned) {
@@ -533,7 +555,7 @@ if (r.vasp) {
 
   inner.innerHTML =
     '<div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);word-break:break-all;background:var(--bg);border-radius:7px;padding:0.5rem 0.75rem;border:1px solid var(--border);margin-bottom:1rem">' + displayAddr + '</div>' +
-    sanctionHtml + coverageHtml +
+    decisionHtml + sanctionHtml + coverageHtml +
     '<div class="score-row"><span>Risiko-Score</span><span class="score-val" style="color:' + color + '">' + score + '/100 · ' + r.riskLevel + '</span></div>' +
     '<div class="score-track"><div class="score-fill" style="width:' + score + '%;background:' + color + '"></div></div>' +
     '<div class="verdict ' + vClass + '"><span class="verdict-icon">' + icon + '</span><span>' + r.summary + '</span></div>' +
