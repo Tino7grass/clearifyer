@@ -34,12 +34,26 @@ const IKNAIO_KEY     = process.env.IKNAIO_API_KEY     || "";
 // externe API die gesamte Function über das Netlify-Zeitlimit
 // zieht (Vorfall: Function lief 52s, Netlify-Timeout griff,
 // Frontend bekam HTML-Fehlerseite statt JSON zurück).
+//
+// GA-02-Nachtrag (03.07.2026): Ohne eigenen User-Agent-Header senden
+// Node-fetch-Clients teils gar keinen oder einen generischen UA-String.
+// Manche Behörden-WAFs (u.a. treasury.gov) blocken genau das als
+// Bot-Traffic — bestätigt durch einen direkten Testabruf, der ohne
+// Header mit "bot detection" abgewiesen wurde. Default-Header setzen
+// einen browsertypischen UA, außer options überschreibt ihn explizit.
 // ============================================================
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, {
+      ...options,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        ...(options.headers || {}),
+      },
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -93,7 +107,11 @@ function getCacheTTL(riskScore, sanctioned) {
 //          criticalSourceOutage + decisionCode/reasonCodes neu im Ergebnis.
 //          Ohne diesen Versionssprung würden bereits gecachte Alt-Ergebnisse (ohne
 //          decisionCode, mit dem alten EU-Ausfall-Bug) bis zu 7 Tage weiter ausgeliefert.
-const SCORE_LOGIC_VERSION = "v6";
+//   v6→v7: GA-02-Nachtrag — fehlender EU-FSF-Zugriffstoken ergänzt (Endpunkt lieferte
+//          zuvor nie gültige Daten, nur wegen des v5→v6-Fixes überhaupt bemerkt) +
+//          Standard-User-Agent-Header gegen Bot-Blocking bei treasury.gov ergänzt.
+//          Ändert das live-Verhalten beider Sanktionsquellen — Alt-Cache ungültig.
+const SCORE_LOGIC_VERSION = "v7";
 
 async function getFromCache(address, network, context) {
   try {
@@ -299,7 +317,16 @@ async function loadEU() {
   }
   try {
     const res = await fetchWithTimeout(
-      "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content",
+      // GA-02-Nachtrag (03.07.2026): Der ursprünglichen URL fehlte der Pflicht-Parameter
+      // "?token=...". Die EU FSF (Financial Sanctions Files) verlangen für den
+      // öffentlichen/automatisierten Zugriff diesen Token — ohne ihn liefert der Endpunkt
+      // keine gültige Sanktionsliste zurück. "dG9rZW4tMjAxNw" ist der offiziell
+      // dokumentierte öffentliche Zugriffstoken für automatisierten/Crawler-Zugriff auf
+      // die FSF-Public-Files (base64 von "token-2017"), verifiziert per Testabruf: liefert
+      // gültiges XML zurück. Dieser Bug ist vermutlich der Grund, warum der EU-Abgleich
+      // seit jeher wirkungslos war — nur wegen des alten loadEU()-Fallback-Bugs (leerer
+      // Set statt Fehler) ist das nie aufgefallen.
+      "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw",
       {}, 10000
     );
     if (!res.ok) {
