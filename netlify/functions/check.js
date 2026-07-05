@@ -111,12 +111,33 @@ function getCacheTTL(riskScore, sanctioned) {
 //          zuvor nie gültige Daten, nur wegen des v5→v6-Fixes überhaupt bemerkt) +
 //          Standard-User-Agent-Header gegen Bot-Blocking bei treasury.gov ergänzt.
 //          Ändert das live-Verhalten beider Sanktionsquellen — Alt-Cache ungültig.
-const SCORE_LOGIC_VERSION = "v7";
+//   v7→v8: GA-09/GA-13 — tenant_id und travel_rule_status neu im Cache-Key (Struktur
+//          geändert, siehe getFromCache/saveToCache) sowie im Ergebnis/Audit-Log.
+//          Neue Regel: travel_rule_status "missing"/"failed" kann HOLD auslösen.
+const SCORE_LOGIC_VERSION = "v8";
 
-async function getFromCache(address, network, context) {
+// ============================================================
+// GA-09 (schlanke Umsetzung, 03.07.2026)
+// Vollständige Mandantenfähigkeit (getrennte Zugriffsrechte, eigene
+// Policy Packs pro Kunde, Rollenmodell B-01) ist ein eigenes
+// Sicherheitsthema für Phase B und gehört ins IT-Partner-Briefing.
+// Diese Umsetzung deckt nur die Schema-Vorbereitung ab: tenant_id
+// wird durchgängig durch Ergebnis, Audit-Log, Cache-Key und CSV-Export
+// geführt, damit ein zweiter Pilotkunde später nicht nachträglich in
+// jede Datenstruktur eingefügt werden muss. Ohne expliziten tenant_id
+// im Request greift dieser Default — heutiges Verhalten bleibt für
+// den laufenden Bitpanda-Piloten unverändert.
+// ============================================================
+const DEFAULT_TENANT_ID = "pilot-001";
+
+async function getFromCache(address, network, context, tenantId, travelRuleStatus) {
   try {
     const store = getResultCacheStore();
-    const key   = `${network}:${address.toLowerCase()}:${context || "none"}:${SCORE_LOGIC_VERSION}`;
+    // GA-09/GA-13: tenantId und travelRuleStatus gehören in den Cache-Key, weil beide
+    // das Ergebnis (insb. den Decision Code) verändern können — ein Cache-Hit ohne diese
+    // Unterscheidung würde sonst z.B. eine mit travel_rule_status="missing" berechnete
+    // HOLD-Entscheidung fälschlich auch für "available" zurückgeben.
+    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${SCORE_LOGIC_VERSION}`;
     const entry = await store.get(key, { type: "json" });
     if (!entry) return null;
 
@@ -132,13 +153,13 @@ async function getFromCache(address, network, context) {
   }
 }
 
-async function saveToCache(address, network, context, result) {
+async function saveToCache(address, network, context, tenantId, travelRuleStatus, result) {
   try {
     // Sanktionierte Adressen nicht cachen
     if (result.sanctioned) return;
 
     const store = getResultCacheStore();
-    const key   = `${network}:${address.toLowerCase()}:${context || "none"}:${SCORE_LOGIC_VERSION}`;
+    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${SCORE_LOGIC_VERSION}`;
     await store.setJSON(key, {
       ...result,
       cachedAt: new Date().toISOString(),
@@ -880,12 +901,18 @@ function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, mist
 // Objekts und muss daher feststehen, bevor der Cache-Eintrag geschrieben wird.
 // ============================================================
 
-function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio }) {
+function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus }) {
   const reasonCodes = [];
   let decisionCode = null;
 
   const isSupportLeakContext = SUPPORT_LEAK_CONTEXT_VALUES.has(context);
   const level = aiResult.riskLevel;
+  // GA-13: Clearifyer erzeugt niemals eigene TFR-Daten — der Status kommt vom
+  // Kunden-/Partnersystem (siehe E2E-Playbook, Phase D "Travel Rule status").
+  // "missing"/"failed" sind die beiden Zustände, bei denen die Pflichtangabe
+  // fehlt oder nicht zugestellt werden konnte; "available"/"pending" lösen
+  // keine Regel aus (pending ist ein normaler Zwischenzustand, kein Blocker).
+  const isTravelRuleIncomplete = travelRuleStatus === "missing" || travelRuleStatus === "failed";
 
   // Alle zutreffenden Signale sammeln (für Evidence/Reason-Codes),
   // unabhängig davon, welches am Ende die Entscheidung bestimmt.
@@ -895,6 +922,7 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   if (level === "KRITISCH")      reasonCodes.push("RISK_CRITICAL");
   if (level === "HOCH")          reasonCodes.push("RISK_HIGH");
   if (level === "MITTEL")        reasonCodes.push("RISK_MEDIUM");
+  if (isTravelRuleIncomplete)    reasonCodes.push("TRAVEL_RULE_DATA_" + travelRuleStatus.toUpperCase());
   if (aiAnalysisFailed)          reasonCodes.push("AI_ANALYSIS_UNAVAILABLE");
   if (coverageRatio < 0.6)       reasonCodes.push("DATA_COVERAGE_LOW");
 
@@ -920,17 +948,24 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   else if (level === "HOCH") {
     decisionCode = "MANUAL_REVIEW";
   }
-  // Priorität 6: KI-Gesamtbewertung nicht verfügbar → keine automatische
+  // Priorität 6 (GA-13): Pflichtangabe zum Zahlungsverkehr (Travel Rule) fehlt
+  // oder konnte nicht zugestellt werden. Unabhängig vom Fraud-/AML-Risiko der
+  // Adresse selbst — eine sonst unauffällige Adresse darf trotzdem nicht ohne
+  // vollständige TFR-Daten automatisch freigegeben werden.
+  else if (isTravelRuleIncomplete) {
+    decisionCode = "HOLD";
+  }
+  // Priorität 7: KI-Gesamtbewertung nicht verfügbar → keine automatische
   // Freigabe; Rohdaten liegen vor, aber ein Mensch muss sie einordnen.
   else if (aiAnalysisFailed) {
     decisionCode = "HOLD";
   }
-  // Priorität 7: Datenabdeckung zu niedrig, um ein Grün zu rechtfertigen,
+  // Priorität 8: Datenabdeckung zu niedrig, um ein Grün zu rechtfertigen,
   // auch wenn kein einzelnes Signal kritisch war.
   else if (coverageRatio < 0.6) {
     decisionCode = "ASK";
   }
-  // Priorität 8: mittleres Risiko ohne harten Trigger → zusätzliche
+  // Priorität 9: mittleres Risiko ohne harten Trigger → zusätzliche
   // Bestätigung/Information sinnvoll, aber kein Case nötig.
   else if (level === "MITTEL") {
     decisionCode = "ASK";
@@ -1022,8 +1057,17 @@ exports.handler = async (event) => {
   const start = Date.now();
 
   try {
- const { addr, network, context, amount, demo } = JSON.parse(event.body || "{}");
+ const { addr, network, context, amount, demo, tenantId, travelRuleStatus } = JSON.parse(event.body || "{}");
 if (!addr || !network) return { statusCode: 400, headers, body: JSON.stringify({ error: "addr und network erforderlich" }) };
+
+// GA-09: ohne expliziten Mandanten greift der Pilot-Default (siehe Kommentar bei DEFAULT_TENANT_ID).
+const resolvedTenantId = (tenantId && String(tenantId).trim()) || DEFAULT_TENANT_ID;
+
+// GA-13: nur die vier in E2E-Playbook/Spezifikation dokumentierten Zustände sind gültig;
+// alles andere (inkl. nicht gesetzt) wird wie "nicht angegeben" behandelt und
+// löst keine Regel aus — Clearifyer erzeugt niemals eigene TFR-Daten.
+const VALID_TRAVEL_RULE_STATUS = new Set(["available", "pending", "missing", "failed"]);
+const resolvedTravelRuleStatus = VALID_TRAVEL_RULE_STATUS.has(travelRuleStatus) ? travelRuleStatus : null;
 
 if (demo === true) {
   const normalizedAddr = addr.toLowerCase().trim();
@@ -1050,9 +1094,9 @@ if (demo === true) {
     const formatCheck = validateAddress(address, network);
 
     // ── CACHE-LOOKUP (vor allen API-Calls) ──────────────────
-    const cached = await getFromCache(address, network, context);
+    const cached = await getFromCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus);
     if (cached) {
-      console.log(`Cache HIT: ${network}:${address}`);
+      console.log(`Cache HIT: ${resolvedTenantId}:${network}:${address}`);
       return {
         statusCode: 200,
         headers,
@@ -1138,14 +1182,21 @@ if (demo === true) {
     const { decisionCode, reasonCodes } = deriveDecisionCode({
       isSanctioned, criticalSourceOutage, context,
       aiResult, aiAnalysisFailed, coverageRatio,
+      travelRuleStatus: resolvedTravelRuleStatus,
     });
 
     // ── Audit-Log schreiben ──────────────────────────────────
     await writeAuditLog({
+      // GA-09 (schlank): tenant_id ab sofort in jedem Audit-Eintrag, damit Filterung
+      // nach Mandant (siehe C-03) später ohne Nacherfassung alter Daten möglich ist.
+      tenant_id: resolvedTenantId,
       address,
       ens_name: ensResult.ensName || null,
       chain: network,
       context_answer: context || "–",
+      // GA-13: null, falls vom Kunden/Partnersystem nicht mitgeliefert — Clearifyer
+      // erzeugt niemals eigene TFR-Daten, daher kein Default außer "nicht angegeben".
+      travel_rule_status: resolvedTravelRuleStatus,
       risk_score_raw_ai: rawAiResult.riskScore,
       risk_score_final: aiResult.riskScore,
       risk_level: aiResult.riskLevel,
@@ -1171,6 +1222,8 @@ if (demo === true) {
 
     // ── Ergebnis zusammenstellen ─────────────────────────────
     const result = {
+      tenantId: resolvedTenantId,
+      travelRuleStatus: resolvedTravelRuleStatus,
       addr: address,
       ensName: ensResult.ensName || null,
       network,
@@ -1214,7 +1267,7 @@ if (demo === true) {
     };
 
     // ── Ergebnis in Cache speichern ──────────────────────────
-    await saveToCache(address, network, context, result);
+    await saveToCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, result);
 
     return {
       statusCode: 200,
