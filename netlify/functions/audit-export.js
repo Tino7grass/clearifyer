@@ -34,14 +34,16 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ message: "Keine Einträge.", count: 0 }) };
     }
 
-    const csvHeader = ["ID","Zeitstempel","Adresse","ENS-Name","Blockchain","Kontext","Risiko-Score","Risiko-Level","Sanktioniert","Sanktions-Quelle","Decision Code","Reason Codes","Kritischer Quellenausfall","Quellen","Dauer (ms)"].join(";");
+    const csvHeader = ["ID","Zeitstempel","Mandant","Adresse","ENS-Name","Blockchain","Kontext","Travel-Rule-Status","Risiko-Score","Risiko-Level","Sanktioniert","Sanktions-Quelle","Decision Code","Reason Codes","Kritischer Quellenausfall","Quellen","Dauer (ms)"].join(";");
     const csvRows = entries.map(e => [
       e.id || "",
       e.timestamp || "",
+      e.tenant_id || "",
       e.address || "",
       e.ens_name || "",
       e.chain || "",
       '"' + (e.context_answer || "").replace(/"/g, '""') + '"',
+      e.travel_rule_status || "",
       e.risk_score != null ? e.risk_score : "",
       e.risk_level || "",
       e.sanctioned ? "JA" : "NEIN",
