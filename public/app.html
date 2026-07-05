@@ -277,6 +277,15 @@ if (sessionStorage.getItem('clearifyer_auth') === 'true') {
   <div class="card-label">Betrag (optional)</div>
   <input class="amount" id="amount" type="text" placeholder="z.B. 200 EUR oder 0.5 ETH">
 
+  <div class="card-label">Travel-Rule-Status (optional, meist vom Partnersystem geliefert)</div>
+  <select id="travelRuleStatus" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;color:var(--text);font-size:0.85rem;padding:0.7rem 1rem;outline:none;margin-bottom:1.25rem;">
+    <option value="">Nicht angegeben</option>
+    <option value="available">Vorhanden (available)</option>
+    <option value="pending">Ausstehend (pending)</option>
+    <option value="missing">Fehlt (missing)</option>
+    <option value="failed">Fehlgeschlagen (failed)</option>
+  </select>
+
   <button class="submit" id="btnSubmit" onclick="runCheck()" disabled>
     🔍  Adresse prüfen
   </button>
@@ -382,6 +391,7 @@ function openReport() {
 async function runCheck() {
   var addr = document.getElementById('addr').value.trim();
   var amount = document.getElementById('amount').value.trim();
+  var travelRuleStatus = document.getElementById('travelRuleStatus').value; // GA-13, leer = "nicht angegeben"
   var btn = document.getElementById('btnSubmit');
   var resultDiv = document.getElementById('result');
   var inner = document.getElementById('result-inner');
@@ -395,7 +405,7 @@ async function runCheck() {
     var res = await fetch('/.netlify/functions/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addr: addr, network: selectedNetwork, context: selectedContext, amount: amount })
+      body: JSON.stringify({ addr: addr, network: selectedNetwork, context: selectedContext, amount: amount, travelRuleStatus: travelRuleStatus })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
