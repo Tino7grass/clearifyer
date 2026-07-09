@@ -4,6 +4,7 @@
 // Neu: Result Cache (Netlify Blobs) — spart externe API-Kosten
 
 const { getStore } = require("@netlify/blobs");
+const { contextualStoreName } = require("./lib/store-name");
 const vaspList = require('./vasp-list.json');
 
 function lookupVASP(address) {
@@ -75,7 +76,7 @@ const CACHE_TTL = 60 * 60 * 1000;
 
 function getResultCacheStore() {
   return getStore({
-    name: "clearifyer-result-cache",
+    name: contextualStoreName("clearifyer-result-cache"),
     siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
     token: process.env.NETLIFY_TOKEN
   });
@@ -985,7 +986,7 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
 async function writeAuditLog(entry) {
   try {
     const store = getStore({
-      name: "clearifyer-audit-log",
+      name: contextualStoreName("clearifyer-audit-log"),
       siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
       token: process.env.NETLIFY_TOKEN
     });
