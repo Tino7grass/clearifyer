@@ -1058,7 +1058,7 @@ exports.handler = async (event) => {
   const start = Date.now();
 
   try {
- const { addr, network, context, amount, demo, tenantId, travelRuleStatus } = JSON.parse(event.body || "{}");
+ const { addr, network, context, amount, demo, tenantId, travelRuleStatus, counterpartyName } = JSON.parse(event.body || "{}");
 if (!addr || !network) return { statusCode: 400, headers, body: JSON.stringify({ error: "addr und network erforderlich" }) };
 
 // GA-09: ohne expliziten Mandanten greift der Pilot-Default (siehe Kommentar bei DEFAULT_TENANT_ID).
@@ -1195,6 +1195,7 @@ if (demo === true) {
       ens_name: ensResult.ensName || null,
       chain: network,
       context_answer: context || "–",
+      counterparty_name: counterpartyName || null,
       // GA-13: null, falls vom Kunden/Partnersystem nicht mitgeliefert — Clearifyer
       // erzeugt niemals eigene TFR-Daten, daher kein Default außer "nicht angegeben".
       travel_rule_status: resolvedTravelRuleStatus,
@@ -1264,6 +1265,7 @@ if (demo === true) {
       checkedAt: new Date().toLocaleDateString("de-DE"),
       ...aiResult,
       vasp: lookupVASP(address),
+      counterpartyName: counterpartyName || null,
       cacheHit: false,
     };
 
