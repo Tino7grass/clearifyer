@@ -119,7 +119,7 @@ function getCacheTTL(riskScore, sanctioned) {
 //   v7→v8: GA-09/GA-13 — tenant_id und travel_rule_status neu im Cache-Key (Struktur
 //          geändert, siehe getFromCache/saveToCache) sowie im Ergebnis/Audit-Log.
 //          Neue Regel: travel_rule_status "missing"/"failed" kann HOLD auslösen.
-const SCORE_LOGIC_VERSION = "v8";
+const SCORE_LOGIC_VERSION = "v9";
 
 // ============================================================
 // GA-09 (schlanke Umsetzung, 03.07.2026)
@@ -1314,7 +1314,8 @@ if (demo === true) {
       ...aiResult,
       vasp: lookupVASP(address),
       counterpartyName: counterpartyName || null,
-      esmaCheck,
+     esmaCheck,
+      scam,
       cacheHit: false,
     };
 
