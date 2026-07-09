@@ -6,6 +6,7 @@
 const { getStore } = require("@netlify/blobs");
 const { contextualStoreName } = require("./lib/store-name");
 const vaspList = require('./vasp-list.json');
+const { checkCounterpartyESMA } = require("./lib/esma-noncompliant");
 
 function lookupVASP(address) {
   if (!address) return null;
@@ -902,7 +903,7 @@ function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, mist
 // Objekts und muss daher feststehen, bevor der Cache-Eintrag geschrieben wird.
 // ============================================================
 
-function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus }) {
+function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus, esmaCheck }) {
   const reasonCodes = [];
   let decisionCode = null;
 
@@ -924,6 +925,8 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   if (level === "HOCH")          reasonCodes.push("RISK_HIGH");
   if (level === "MITTEL")        reasonCodes.push("RISK_MEDIUM");
   if (isTravelRuleIncomplete)    reasonCodes.push("TRAVEL_RULE_DATA_" + travelRuleStatus.toUpperCase());
+  const counterpartyFlagged = esmaCheck?.available && esmaCheck.matches?.length > 0;
+  if (counterpartyFlagged) reasonCodes.push("COUNTERPARTY_UNLICENSED");
   if (aiAnalysisFailed)          reasonCodes.push("AI_ANALYSIS_UNAVAILABLE");
   if (coverageRatio < 0.6)       reasonCodes.push("DATA_COVERAGE_LOW");
 
@@ -955,6 +958,13 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   // vollständige TFR-Daten automatisch freigegeben werden.
   else if (isTravelRuleIncomplete) {
     decisionCode = "HOLD";
+  }
+    // Priorität 6b: Genannte Gegenpartei steht auf der ESMA-Non-Compliant-Liste.
+  // Namens-Match = geringere Konfidenz als jedes Adress-Signal — daher ASK,
+  // kein REJECT/MANUAL_REVIEW. Der Trail zeigt Behörde/Land/Grund, damit die
+  // Aussage nie zu "Marke X ist verboten" verkürzt wird.
+  else if (counterpartyFlagged) {
+    decisionCode = "ASK";
   }
   // Priorität 7: KI-Gesamtbewertung nicht verfügbar → keine automatische
   // Freigabe; Rohdaten liegen vor, aber ein Mensch muss sie einordnen.
@@ -1120,6 +1130,8 @@ if (demo === true) {
       checkMistTrack(address, network),
       checkIknaio(address, network),
     ]);
+    // ── Phase 2, Schritt 2: Gegenpartei-Name gegen ESMA Non-Compliant prüfen ──
+    const esmaCheck = await checkCounterpartyESMA(counterpartyName);
 
     // ── K.O.-Kriterium: Sanktionslisten ─────────────────────
     const isSanctioned = ofac.sanctioned || euSanctions.sanctioned;
@@ -1184,6 +1196,7 @@ if (demo === true) {
       isSanctioned, criticalSourceOutage, context,
       aiResult, aiAnalysisFailed, coverageRatio,
       travelRuleStatus: resolvedTravelRuleStatus,
+      esmaCheck,
     });
 
     // ── Audit-Log schreiben ──────────────────────────────────
@@ -1196,6 +1209,14 @@ if (demo === true) {
       chain: network,
       context_answer: context || "–",
       counterparty_name: counterpartyName || null,
+      esma_counterparty_checked: esmaCheck.checked,
+      esma_counterparty_available: esmaCheck.available,
+      esma_counterparty_matches: esmaCheck.matches.map(m => ({
+        matchedName: m.matchedName,
+        authority: m.competentAuthority,
+        country: m.homeMemberState,
+        reason: m.reason,
+      })),
       // GA-13: null, falls vom Kunden/Partnersystem nicht mitgeliefert — Clearifyer
       // erzeugt niemals eigene TFR-Daten, daher kein Default außer "nicht angegeben".
       travel_rule_status: resolvedTravelRuleStatus,
@@ -1266,6 +1287,7 @@ if (demo === true) {
       ...aiResult,
       vasp: lookupVASP(address),
       counterpartyName: counterpartyName || null,
+      esmaCheck,
       cacheHit: false,
     };
 
