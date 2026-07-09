@@ -7,6 +7,9 @@ const { getStore } = require("@netlify/blobs");
 const { contextualStoreName } = require("./lib/store-name");
 const vaspList = require('./vasp-list.json');
 const { checkCounterpartyESMA } = require("./lib/esma-noncompliant");
+const { classifyScam } = require("./lib/fraud-aggregator");
+const { chainabuseToScamInput } = require("./lib/chainabuse-map");
+const { screenCryptoScamDB } = require("./lib/cryptoscamdb");
 
 function lookupVASP(address) {
   if (!address) return null;
@@ -496,19 +499,20 @@ async function fetchEtherscan(addr, network) {
 // ============================================================
 
 async function fetchChainabuse(addr) {
-  if (!CHAINABUSE_KEY) return { reports: 0 };
+  if (!CHAINABUSE_KEY) return { available: false, reports: 0, categories: [] };
   try {
     const res = await fetchWithTimeout(
       `https://www.chainabuse.com/api/reports/search?address=${encodeURIComponent(addr)}`,
       { headers: { "X-API-Key": CHAINABUSE_KEY } }
     );
-    if (!res.ok) return { reports: 0 };
+    if (!res.ok) return { available: false, reports: 0, categories: [] };
     const data = await res.json();
     return {
+      available: true,
       reports: data.totalCount ?? 0,
       categories: [...new Set((data.reports || []).map(r => r.scamCategory).filter(Boolean))]
     };
-  } catch { return { reports: 0 }; }
+  } catch { return { available: false, reports: 0, categories: [] }; }
 }
 
 // ============================================================
@@ -903,7 +907,7 @@ function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, mist
 // Objekts und muss daher feststehen, bevor der Cache-Eintrag geschrieben wird.
 // ============================================================
 
-function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus, esmaCheck }) {
+function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus, esmaCheck, scam }) {
   const reasonCodes = [];
   let decisionCode = null;
 
@@ -927,6 +931,10 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   if (isTravelRuleIncomplete)    reasonCodes.push("TRAVEL_RULE_DATA_" + travelRuleStatus.toUpperCase());
   const counterpartyFlagged = esmaCheck?.available && esmaCheck.matches?.length > 0;
   if (counterpartyFlagged) reasonCodes.push("COUNTERPARTY_UNLICENSED");
+  const scamConfirmed = scam?.code === "SCAM_ADDRESS_CONFIRMED";
+  const scamReported  = scam?.code === "SCAM_ADDRESS_REPORTED";
+  if (scamConfirmed) reasonCodes.push("SCAM_ADDRESS_CONFIRMED");
+  if (scamReported)  reasonCodes.push("SCAM_ADDRESS_REPORTED");
   if (aiAnalysisFailed)          reasonCodes.push("AI_ANALYSIS_UNAVAILABLE");
   if (coverageRatio < 0.6)       reasonCodes.push("DATA_COVERAGE_LOW");
 
@@ -938,6 +946,11 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   // Sanktionsprüfung darf NIE automatisch zu ALLOW führen (GA-02).
   else if (criticalSourceOutage) {
     decisionCode = "ERROR";
+  }
+    // Priorität 2b: Fraud-Adresse mehrfach/verifiziert gemeldet — Block bis
+  // menschlicher Prüfung. Community-Quelle, daher MANUAL_REVIEW statt REJECT.
+  else if (scamConfirmed) {
+    decisionCode = "MANUAL_REVIEW";
   }
   // Priorität 3: Kontext-Fraud-Signal (z.B. "Support gab mir die Adresse").
   else if (isSupportLeakContext) {
@@ -952,6 +965,11 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   else if (level === "HOCH") {
     decisionCode = "MANUAL_REVIEW";
   }
+  // Priorität 5b: Fraud-Adresse einmalig/unverifiziert gemeldet — kein
+  // Hard-Block, aber keine automatische Freigabe.
+  else if (scamReported) {
+    decisionCode = "HOLD";
+  }  
   // Priorität 6 (GA-13): Pflichtangabe zum Zahlungsverkehr (Travel Rule) fehlt
   // oder konnte nicht zugestellt werden. Unabhängig vom Fraud-/AML-Risiko der
   // Adresse selbst — eine sonst unauffällige Adresse darf trotzdem nicht ohne
@@ -1132,6 +1150,12 @@ if (demo === true) {
     ]);
     // ── Phase 2, Schritt 2: Gegenpartei-Name gegen ESMA Non-Compliant prüfen ──
     const esmaCheck = await checkCounterpartyESMA(counterpartyName);
+    // ── Phase 1 (nachgeholt): Fraud-Aggregation aus Chainabuse (+ CryptoScamDB, sobald aktiv) ──
+    const scam = classifyScam([
+      chainabuseToScamInput(chainabuse),
+      await screenCryptoScamDB(address),
+    ]);
+   
 
     // ── K.O.-Kriterium: Sanktionslisten ─────────────────────
     const isSanctioned = ofac.sanctioned || euSanctions.sanctioned;
@@ -1196,7 +1220,7 @@ if (demo === true) {
       isSanctioned, criticalSourceOutage, context,
       aiResult, aiAnalysisFailed, coverageRatio,
       travelRuleStatus: resolvedTravelRuleStatus,
-      esmaCheck,
+      esmaCheck, scam,
     });
 
     // ── Audit-Log schreiben ──────────────────────────────────
@@ -1217,6 +1241,9 @@ if (demo === true) {
         country: m.homeMemberState,
         reason: m.reason,
       })),
+      scam_confidence: scam.code,
+      scam_sources: scam.reportingSources,
+      scam_report_count: scam.reportCount,
       // GA-13: null, falls vom Kunden/Partnersystem nicht mitgeliefert — Clearifyer
       // erzeugt niemals eigene TFR-Daten, daher kein Default außer "nicht angegeben".
       travel_rule_status: resolvedTravelRuleStatus,
