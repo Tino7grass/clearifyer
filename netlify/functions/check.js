@@ -132,14 +132,14 @@ const SCORE_LOGIC_VERSION = "v8";
 // ============================================================
 const DEFAULT_TENANT_ID = "pilot-001";
 
-async function getFromCache(address, network, context, tenantId, travelRuleStatus) {
+async function getFromCache(address, network, context, tenantId, travelRuleStatus, counterpartyName) {
   try {
     const store = getResultCacheStore();
     // GA-09/GA-13: tenantId und travelRuleStatus gehören in den Cache-Key, weil beide
     // das Ergebnis (insb. den Decision Code) verändern können — ein Cache-Hit ohne diese
     // Unterscheidung würde sonst z.B. eine mit travel_rule_status="missing" berechnete
     // HOLD-Entscheidung fälschlich auch für "available" zurückgeben.
-    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${SCORE_LOGIC_VERSION}`;
+    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${counterpartyName || "none"}:${SCORE_LOGIC_VERSION}`;
     const entry = await store.get(key, { type: "json" });
     if (!entry) return null;
 
@@ -155,13 +155,13 @@ async function getFromCache(address, network, context, tenantId, travelRuleStatu
   }
 }
 
-async function saveToCache(address, network, context, tenantId, travelRuleStatus, result) {
+async function saveToCache(address, network, context, tenantId, travelRuleStatus, counterpartyName, result) {
   try {
     // Sanktionierte Adressen nicht cachen
     if (result.sanctioned) return;
 
     const store = getResultCacheStore();
-    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${SCORE_LOGIC_VERSION}`;
+    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${counterpartyName || "none"}:${SCORE_LOGIC_VERSION}`;
     await store.setJSON(key, {
       ...result,
       cachedAt: new Date().toISOString(),
@@ -1105,7 +1105,7 @@ if (demo === true) {
     const formatCheck = validateAddress(address, network);
 
     // ── CACHE-LOOKUP (vor allen API-Calls) ──────────────────
-    const cached = await getFromCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus);
+    const cached = await getFromCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, counterpartyName);
     if (cached) {
       console.log(`Cache HIT: ${resolvedTenantId}:${network}:${address}`);
       return {
@@ -1292,7 +1292,7 @@ if (demo === true) {
     };
 
     // ── Ergebnis in Cache speichern ──────────────────────────
-    await saveToCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, result);
+    await saveToCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, counterpartyName, result);
 
     return {
       statusCode: 200,
