@@ -273,6 +273,10 @@ if (sessionStorage.getItem('clearifyer_auth') === 'true') {
       <span>E-Mail oder unbekannte Quelle</span>
     </div>
   </div>
+  <div class="card-label">Name der Plattform / Person (optional, falls bekannt)</div>
+  <input class="amount" id="counterpartyName" type="text"
+         placeholder="z. B. Bitpanda, Binance, oder Name der Person"
+         style="margin-bottom:1.25rem;">
 
   <div class="card-label">Betrag (optional)</div>
   <input class="amount" id="amount" type="text" placeholder="z.B. 200 EUR oder 0.5 ETH">
@@ -405,7 +409,7 @@ async function runCheck() {
     var res = await fetch('/.netlify/functions/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addr: addr, network: selectedNetwork, context: selectedContext, amount: amount, travelRuleStatus: travelRuleStatus })
+      body: JSON.stringify({ addr: addr, network: selectedNetwork, context: selectedContext, amount: amount, travelRuleStatus: travelRuleStatus, counterpartyName: document.getElementById('counterpartyName').value.trim() || null })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -607,6 +611,7 @@ function newCheck() {
   var opts = document.querySelectorAll('.ctx-opt');
   for (var i = 0; i < opts.length; i++) opts[i].classList.remove('active');
   selectedContext = '';
+  document.getElementById('counterpartyName').value = '';
   lastResult = null;
   updateSubmitState();
   window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -1,5 +1,6 @@
 // netlify/functions/audit-export.js
 const { getStore } = require("@netlify/blobs");
+const { contextualStoreName } = require("./lib/store-name");
 
 exports.handler = async (event) => {
   const headers = {
@@ -16,7 +17,7 @@ exports.handler = async (event) => {
 
   try {
     const store = getStore({
-      name: "clearifyer-audit-log",
+      name: contextualStoreName("clearifyer-audit-log"),
       siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
       token: process.env.NETLIFY_TOKEN
     });
@@ -34,7 +35,7 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ message: "Keine Einträge.", count: 0 }) };
     }
 
-    const csvHeader = ["ID","Zeitstempel","Mandant","Adresse","ENS-Name","Blockchain","Kontext","Travel-Rule-Status","Risiko-Score","Risiko-Level","Sanktioniert","Sanktions-Quelle","Decision Code","Reason Codes","Kritischer Quellenausfall","Quellen","Dauer (ms)"].join(";");
+    const csvHeader = ["ID","Zeitstempel","Mandant","Adresse","ENS-Name","Blockchain","Kontext","Travel-Rule-Status","Risiko-Score","Risiko-Level","Sanktioniert","Sanktions-Quelle","Decision Code","Reason Codes","Gegenpartei-Name","Kritischer Quellenausfall","Quellen","Dauer (ms)"].join(";");
     const csvRows = entries.map(e => [
       e.id || "",
       e.timestamp || "",
@@ -50,6 +51,7 @@ exports.handler = async (event) => {
       e.sanction_source || "",
       e.decision_code || "",
       '"' + (e.reason_codes || []).join(", ") + '"',
+      '"' + (e.counterparty_name || "").replace(/"/g, '""') + '"',
       e.critical_source_outage ? "JA" : "NEIN",
       (e.sources_checked || []).join(", "),
       e.duration_ms || ""

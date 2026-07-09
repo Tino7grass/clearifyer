@@ -4,7 +4,12 @@
 // Neu: Result Cache (Netlify Blobs) — spart externe API-Kosten
 
 const { getStore } = require("@netlify/blobs");
+const { contextualStoreName } = require("./lib/store-name");
 const vaspList = require('./vasp-list.json');
+const { checkCounterpartyESMA } = require("./lib/esma-noncompliant");
+const { classifyScam } = require("./lib/fraud-aggregator");
+const { chainabuseToScamInput } = require("./lib/chainabuse-map");
+const { screenCryptoScamDB } = require("./lib/cryptoscamdb");
 
 function lookupVASP(address) {
   if (!address) return null;
@@ -75,7 +80,7 @@ const CACHE_TTL = 60 * 60 * 1000;
 
 function getResultCacheStore() {
   return getStore({
-    name: "clearifyer-result-cache",
+    name: contextualStoreName("clearifyer-result-cache"),
     siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
     token: process.env.NETLIFY_TOKEN
   });
@@ -114,7 +119,7 @@ function getCacheTTL(riskScore, sanctioned) {
 //   v7→v8: GA-09/GA-13 — tenant_id und travel_rule_status neu im Cache-Key (Struktur
 //          geändert, siehe getFromCache/saveToCache) sowie im Ergebnis/Audit-Log.
 //          Neue Regel: travel_rule_status "missing"/"failed" kann HOLD auslösen.
-const SCORE_LOGIC_VERSION = "v8";
+const SCORE_LOGIC_VERSION = "v9";
 
 // ============================================================
 // GA-09 (schlanke Umsetzung, 03.07.2026)
@@ -130,14 +135,14 @@ const SCORE_LOGIC_VERSION = "v8";
 // ============================================================
 const DEFAULT_TENANT_ID = "pilot-001";
 
-async function getFromCache(address, network, context, tenantId, travelRuleStatus) {
+async function getFromCache(address, network, context, tenantId, travelRuleStatus, counterpartyName) {
   try {
     const store = getResultCacheStore();
     // GA-09/GA-13: tenantId und travelRuleStatus gehören in den Cache-Key, weil beide
     // das Ergebnis (insb. den Decision Code) verändern können — ein Cache-Hit ohne diese
     // Unterscheidung würde sonst z.B. eine mit travel_rule_status="missing" berechnete
     // HOLD-Entscheidung fälschlich auch für "available" zurückgeben.
-    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${SCORE_LOGIC_VERSION}`;
+    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${counterpartyName || "none"}:${SCORE_LOGIC_VERSION}`;
     const entry = await store.get(key, { type: "json" });
     if (!entry) return null;
 
@@ -153,13 +158,13 @@ async function getFromCache(address, network, context, tenantId, travelRuleStatu
   }
 }
 
-async function saveToCache(address, network, context, tenantId, travelRuleStatus, result) {
+async function saveToCache(address, network, context, tenantId, travelRuleStatus, counterpartyName, result) {
   try {
     // Sanktionierte Adressen nicht cachen
     if (result.sanctioned) return;
 
     const store = getResultCacheStore();
-    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${SCORE_LOGIC_VERSION}`;
+    const key = `${tenantId}:${network}:${address.toLowerCase()}:${context || "none"}:${travelRuleStatus || "none"}:${counterpartyName || "none"}:${SCORE_LOGIC_VERSION}`;
     await store.setJSON(key, {
       ...result,
       cachedAt: new Date().toISOString(),
@@ -494,19 +499,20 @@ async function fetchEtherscan(addr, network) {
 // ============================================================
 
 async function fetchChainabuse(addr) {
-  if (!CHAINABUSE_KEY) return { reports: 0 };
+  if (!CHAINABUSE_KEY) return { available: false, reports: 0, categories: [] };
   try {
     const res = await fetchWithTimeout(
       `https://www.chainabuse.com/api/reports/search?address=${encodeURIComponent(addr)}`,
       { headers: { "X-API-Key": CHAINABUSE_KEY } }
     );
-    if (!res.ok) return { reports: 0 };
+    if (!res.ok) return { available: false, reports: 0, categories: [] };
     const data = await res.json();
     return {
+      available: true,
       reports: data.totalCount ?? 0,
       categories: [...new Set((data.reports || []).map(r => r.scamCategory).filter(Boolean))]
     };
-  } catch { return { reports: 0 }; }
+  } catch { return { available: false, reports: 0, categories: [] }; }
 }
 
 // ============================================================
@@ -901,7 +907,7 @@ function applyScoreFloors({ aiResult, isSanctioned, sanctionSource, iknaio, mist
 // Objekts und muss daher feststehen, bevor der Cache-Eintrag geschrieben wird.
 // ============================================================
 
-function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus }) {
+function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiResult, aiAnalysisFailed, coverageRatio, travelRuleStatus, esmaCheck, scam }) {
   const reasonCodes = [];
   let decisionCode = null;
 
@@ -923,6 +929,12 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   if (level === "HOCH")          reasonCodes.push("RISK_HIGH");
   if (level === "MITTEL")        reasonCodes.push("RISK_MEDIUM");
   if (isTravelRuleIncomplete)    reasonCodes.push("TRAVEL_RULE_DATA_" + travelRuleStatus.toUpperCase());
+  const counterpartyFlagged = esmaCheck?.available && esmaCheck.matches?.length > 0;
+  if (counterpartyFlagged) reasonCodes.push("COUNTERPARTY_UNLICENSED");
+  const scamConfirmed = scam?.code === "SCAM_ADDRESS_CONFIRMED";
+  const scamReported  = scam?.code === "SCAM_ADDRESS_REPORTED";
+  if (scamConfirmed) reasonCodes.push("SCAM_ADDRESS_CONFIRMED");
+  if (scamReported)  reasonCodes.push("SCAM_ADDRESS_REPORTED");
   if (aiAnalysisFailed)          reasonCodes.push("AI_ANALYSIS_UNAVAILABLE");
   if (coverageRatio < 0.6)       reasonCodes.push("DATA_COVERAGE_LOW");
 
@@ -934,6 +946,11 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   // Sanktionsprüfung darf NIE automatisch zu ALLOW führen (GA-02).
   else if (criticalSourceOutage) {
     decisionCode = "ERROR";
+  }
+    // Priorität 2b: Fraud-Adresse mehrfach/verifiziert gemeldet — Block bis
+  // menschlicher Prüfung. Community-Quelle, daher MANUAL_REVIEW statt REJECT.
+  else if (scamConfirmed) {
+    decisionCode = "MANUAL_REVIEW";
   }
   // Priorität 3: Kontext-Fraud-Signal (z.B. "Support gab mir die Adresse").
   else if (isSupportLeakContext) {
@@ -948,12 +965,24 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
   else if (level === "HOCH") {
     decisionCode = "MANUAL_REVIEW";
   }
+  // Priorität 5b: Fraud-Adresse einmalig/unverifiziert gemeldet — kein
+  // Hard-Block, aber keine automatische Freigabe.
+  else if (scamReported) {
+    decisionCode = "HOLD";
+  }  
   // Priorität 6 (GA-13): Pflichtangabe zum Zahlungsverkehr (Travel Rule) fehlt
   // oder konnte nicht zugestellt werden. Unabhängig vom Fraud-/AML-Risiko der
   // Adresse selbst — eine sonst unauffällige Adresse darf trotzdem nicht ohne
   // vollständige TFR-Daten automatisch freigegeben werden.
   else if (isTravelRuleIncomplete) {
     decisionCode = "HOLD";
+  }
+    // Priorität 6b: Genannte Gegenpartei steht auf der ESMA-Non-Compliant-Liste.
+  // Namens-Match = geringere Konfidenz als jedes Adress-Signal — daher ASK,
+  // kein REJECT/MANUAL_REVIEW. Der Trail zeigt Behörde/Land/Grund, damit die
+  // Aussage nie zu "Marke X ist verboten" verkürzt wird.
+  else if (counterpartyFlagged) {
+    decisionCode = "ASK";
   }
   // Priorität 7: KI-Gesamtbewertung nicht verfügbar → keine automatische
   // Freigabe; Rohdaten liegen vor, aber ein Mensch muss sie einordnen.
@@ -985,7 +1014,7 @@ function deriveDecisionCode({ isSanctioned, criticalSourceOutage, context, aiRes
 async function writeAuditLog(entry) {
   try {
     const store = getStore({
-      name: "clearifyer-audit-log",
+      name: contextualStoreName("clearifyer-audit-log"),
       siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
       token: process.env.NETLIFY_TOKEN
     });
@@ -1057,7 +1086,7 @@ exports.handler = async (event) => {
   const start = Date.now();
 
   try {
- const { addr, network, context, amount, demo, tenantId, travelRuleStatus } = JSON.parse(event.body || "{}");
+ const { addr, network, context, amount, demo, tenantId, travelRuleStatus, counterpartyName } = JSON.parse(event.body || "{}");
 if (!addr || !network) return { statusCode: 400, headers, body: JSON.stringify({ error: "addr und network erforderlich" }) };
 
 // GA-09: ohne expliziten Mandanten greift der Pilot-Default (siehe Kommentar bei DEFAULT_TENANT_ID).
@@ -1094,7 +1123,7 @@ if (demo === true) {
     const formatCheck = validateAddress(address, network);
 
     // ── CACHE-LOOKUP (vor allen API-Calls) ──────────────────
-    const cached = await getFromCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus);
+    const cached = await getFromCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, counterpartyName);
     if (cached) {
       console.log(`Cache HIT: ${resolvedTenantId}:${network}:${address}`);
       return {
@@ -1119,6 +1148,14 @@ if (demo === true) {
       checkMistTrack(address, network),
       checkIknaio(address, network),
     ]);
+    // ── Phase 2, Schritt 2: Gegenpartei-Name gegen ESMA Non-Compliant prüfen ──
+    const esmaCheck = await checkCounterpartyESMA(counterpartyName);
+    // ── Phase 1 (nachgeholt): Fraud-Aggregation aus Chainabuse (+ CryptoScamDB, sobald aktiv) ──
+    const scam = classifyScam([
+      chainabuseToScamInput(chainabuse),
+      await screenCryptoScamDB(address),
+    ]);
+   
 
     // ── K.O.-Kriterium: Sanktionslisten ─────────────────────
     const isSanctioned = ofac.sanctioned || euSanctions.sanctioned;
@@ -1183,6 +1220,7 @@ if (demo === true) {
       isSanctioned, criticalSourceOutage, context,
       aiResult, aiAnalysisFailed, coverageRatio,
       travelRuleStatus: resolvedTravelRuleStatus,
+      esmaCheck, scam,
     });
 
     // ── Audit-Log schreiben ──────────────────────────────────
@@ -1194,6 +1232,18 @@ if (demo === true) {
       ens_name: ensResult.ensName || null,
       chain: network,
       context_answer: context || "–",
+      counterparty_name: counterpartyName || null,
+      esma_counterparty_checked: esmaCheck.checked,
+      esma_counterparty_available: esmaCheck.available,
+      esma_counterparty_matches: esmaCheck.matches.map(m => ({
+        matchedName: m.matchedName,
+        authority: m.competentAuthority,
+        country: m.homeMemberState,
+        reason: m.reason,
+      })),
+      scam_confidence: scam.code,
+      scam_sources: scam.reportingSources,
+      scam_report_count: scam.reportCount,
       // GA-13: null, falls vom Kunden/Partnersystem nicht mitgeliefert — Clearifyer
       // erzeugt niemals eigene TFR-Daten, daher kein Default außer "nicht angegeben".
       travel_rule_status: resolvedTravelRuleStatus,
@@ -1263,11 +1313,14 @@ if (demo === true) {
       checkedAt: new Date().toLocaleDateString("de-DE"),
       ...aiResult,
       vasp: lookupVASP(address),
+      counterpartyName: counterpartyName || null,
+     esmaCheck,
+      scam,
       cacheHit: false,
     };
 
     // ── Ergebnis in Cache speichern ──────────────────────────
-    await saveToCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, result);
+    await saveToCache(address, network, context, resolvedTenantId, resolvedTravelRuleStatus, counterpartyName, result);
 
     return {
       statusCode: 200,
