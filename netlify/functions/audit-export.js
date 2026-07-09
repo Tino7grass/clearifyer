@@ -1,5 +1,6 @@
 // netlify/functions/audit-export.js
 const { getStore } = require("@netlify/blobs");
+const { contextualStoreName } = require("./lib/store-name");
 
 exports.handler = async (event) => {
   const headers = {
@@ -16,7 +17,7 @@ exports.handler = async (event) => {
 
   try {
     const store = getStore({
-      name: "clearifyer-audit-log",
+      name: contextualStoreName("clearifyer-audit-log"),
       siteID: process.env.NETLIFY_SITE_ID || "24815739-0429-4422-8273-c4309c9b6753",
       token: process.env.NETLIFY_TOKEN
     });
